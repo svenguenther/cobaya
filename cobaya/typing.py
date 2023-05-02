@@ -13,11 +13,13 @@ unset_params: Sequence[str] = ()
 LikeDict = InfoDict
 TheoryDict = InfoDict
 SamplerDict = InfoDict
+EmulatorDict = InfoDict
 
 # Read-only versions for input
 LikeDictIn = InfoDictIn
 TheoryDictIn = InfoDictIn
 SamplerDictIn = InfoDictIn
+EmulatorDictIn = InfoDictIn
 
 ParamValuesDict = Dict[str, float]
 # Do not yet explicitly support passing instances here
@@ -77,6 +79,7 @@ class ModelDict(TypedDict, total=False):
     prior: PriorsDict
     params: ParamsDict
     auto_params: ParamsDict
+    emulator: EmulatorDict
 
 
 class PostDict(TypedDict, total=False):

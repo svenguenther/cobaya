@@ -131,6 +131,7 @@ def run(info_or_yaml_or_file: Union[InputDict, str, os.PathLike],
             # 4. Initialize the posterior and the sampler
             with Model(updated_info["params"], updated_info["likelihood"],
                        updated_info.get("prior"), updated_info.get("theory"),
+                       info_emulator = updated_info.get("emulator"),
                        packages_path=info.get(packages_path_input),
                        timing=updated_info.get("timing"),
                        allow_renames=False,

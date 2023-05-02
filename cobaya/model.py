@@ -19,7 +19,7 @@ import numpy as np
 from cobaya.conventions import overhead_time, get_chi2_name, \
     packages_path_input, prior_1d_name
 from cobaya.typing import InfoDict, InputDict, LikesDict, TheoriesDict, \
-    ParamsDict, PriorsDict, ParamValuesDict, empty_dict, unset_params
+    ParamsDict, PriorsDict, ParamValuesDict, empty_dict, unset_params, EmulatorDict
 from cobaya.input import update_info, load_info_overrides
 from cobaya.parameterization import Parameterization
 from cobaya.prior import Prior
@@ -31,6 +31,7 @@ from cobaya.yaml import yaml_dump
 from cobaya.tools import deepcopy_where_possible, are_different_params_lists, \
     str_to_list, sort_parameter_blocks, recursive_update, sort_cosmetic
 from cobaya import mpi
+from cobaya.emulator import Emulator
 
 
 @contextmanager
@@ -217,6 +218,7 @@ class Model(HasLogger):
     def __init__(self, info_params: ParamsDict, info_likelihood: LikesDict,
                  info_prior: Optional[PriorsDict] = None,
                  info_theory: Optional[TheoriesDict] = None,
+                 info_emulator: Optional[EmulatorDict] = None,
                  packages_path=None, timing=None, allow_renames=True, stop_at_error=False,
                  post=False, skip_unused_theories=False,
                  dropped_theory_params: Optional[Iterable[str]] = None):
@@ -258,6 +260,15 @@ class Model(HasLogger):
         # Overhead per likelihood evaluation, approximately ind from # input params
         # Evaluation of non-uniform priors will add some overhead per parameter.
         self.overhead = overhead_time
+
+        self.emulator = None
+        if info_emulator:
+            self.emulator = Emulator(self, info_emulator)
+            
+            for component, like_index in self._component_order.items():
+                if like_index is None:
+                    self.emulator._set_theories(component._name)
+                    self.emulator._set_must_provide(self._must_provide[component] ,component._name)
 
     def info(self) -> InputDict:
         """
@@ -371,28 +382,73 @@ class Model(HasLogger):
         self.log.debug("Got input parameters: %r", input_params)
         loglikes = np.zeros(len(self.likelihood))
         need_derived = self.requires_derived or return_derived or return_output_params
-        for (component, like_index), param_dep in zip(self._component_order.items(),
-                                                      self._params_of_dependencies):
-            depend_list = [input_params[p] for p in param_dep]
-            params = {p: input_params[p] for p in component.input_params}
-            compute_success = component.check_cache_and_compute(
-                params, want_derived=need_derived,
-                dependency_params=depend_list, cached=cached)
-            if not compute_success:
-                loglikes[:] = -np.inf
-                self.log.debug("Calculation failed, skipping rest of calculations ")
-                break
-            if return_derived or return_output_params:
-                outpar_dict.update(component.current_derived)
-            if like_index is not None:
-                try:
-                    loglikes[like_index] = float(component.current_logp)  # type: ignore
-                except TypeError:
-                    raise LoggedError(
-                        self.log,
-                        "Likelihood %s has not returned a valid log-likelihood, "
-                        "but %r instead.", component,
-                        component.current_logp)  # type: ignore
+        self.in_validation = True
+        theory_flag = None # 0 = no theory used, 1 = theory used , 2 = theory used but in validation mode
+        #cached = False
+        while(self.in_validation == True):
+            self.in_validation = False
+            if theory_flag is None:
+                theory_flag = 1
+            else:
+                theory_flag = 2
+            for (component, like_index), param_dep in zip(self._component_order.items(),
+                                                        self._params_of_dependencies):
+                depend_list = [input_params[p] for p in param_dep]
+                params = {p: input_params[p] for p in component.input_params}
+                #self.log.info("Computing %s", component._name)
+                #self.log.info(depend_list)
+                #self.log.info(params)
+                #self.log.info(need_derived)
+                #self.log.info("CURRENT STATE PRE")
+                #self.log.info(component._current_state)
+                if like_index is None:
+                    compute_success = component.check_cache_and_compute(
+                        params, want_derived=need_derived,
+                        dependency_params=depend_list, cached=cached, emulator=self.emulator, loglikes=loglikes, validation_mode=self.in_validation
+                        )
+                    if not component.is_validated:
+                        self.in_validation = True
+                else:
+                    compute_success = component.check_cache_and_compute(
+                        params, want_derived=need_derived,
+                        dependency_params=depend_list, cached=cached, validation_mode=self.in_validation)
+                    if not component.is_validated:
+                        self.in_validation = True
+                #self.log.info("CURRENT STATE PAST")
+                #self.log.info(component._current_state)
+                if not compute_success:
+                    loglikes[:] = -np.inf
+                    self.log.debug("Calculation failed, skipping rest of calculations ")
+                    break
+                if return_derived or return_output_params:
+                    outpar_dict.update(component.current_derived)
+                if like_index is not None:
+                    try:
+                        loglikes[like_index] = float(component.current_logp)  # type: ignore
+                    except TypeError:
+                        raise LoggedError(
+                            self.log,
+                            "Likelihood %s has not returned a valid log-likelihood, "
+                            "but %r instead.", component,
+                            component.current_logp)  # type: ignore
+                if component.is_validated == False: # If one of the components remains in validation, we need to iterate the computation
+                    self.in_validation = True
+                # Erase the likelihoods if we are in validation mode
+                if self.in_validation:
+                    if like_index is not None:
+                        component._current_state = None
+        # Here we add new data to the emulator. It is either accepted or rejected.
+        if theory_flag == 1:
+            if self.emulator is not None:
+                new_state = {}
+                # GO through all theory codes and add computed quantities to the emulator
+                for component, like_index in self._component_order.items():
+                    #if like_index is None:
+                    new_state[component._name] =  (like_index, component.current_state)
+                #self.log.info("NEW STATE")
+                #self.log.info(new_state)
+                self.emulator.add_state(new_state, loglikes.sum())
+
         if make_finite:
             loglikes = np.nan_to_num(loglikes)
         return_likes = dict(zip(self.likelihood, loglikes)) if as_dict else loglikes
@@ -1350,7 +1406,7 @@ def get_model(info_or_yaml_or_file: Union[InputDict, str, os.PathLike],
     ignored_info = []
     for k in list(info):
         if k not in {"params", "likelihood", "prior", "theory", packages_path_input,
-                     "timing", "stop_at_error", "auto_params", "debug"}:
+                     "timing", "stop_at_error", "auto_params", "debug", "emulator"}:
             value = info.pop(k)  # type: ignore
             if value is not None and (not isinstance(value, Mapping) or value):
                 ignored_info.append(k)
@@ -1363,7 +1419,7 @@ def get_model(info_or_yaml_or_file: Union[InputDict, str, os.PathLike],
             "Input info updated with defaults (dumped to YAML):\n%s",
             yaml_dump(sort_cosmetic(updated_info)))
     # Initialize the parameters and posterior
-    return Model(updated_info["params"], updated_info["likelihood"],
+    return Model(updated_info["params"], updated_info["likelihood"], updated_info["emulator"],
                  updated_info.get("prior"), updated_info.get("theory"),
                  packages_path=info.get(packages_path_input),
                  timing=updated_info.get("timing"),

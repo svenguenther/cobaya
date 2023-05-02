@@ -39,6 +39,7 @@ from cobaya.component import CobayaComponent, ComponentCollection, get_component
 from cobaya.tools import str_to_list
 from cobaya.log import LoggedError, always_stop_exceptions
 from cobaya.tools import get_class_methods
+import copy
 
 
 class Theory(CobayaComponent):
@@ -217,7 +218,7 @@ class Theory(CobayaComponent):
         self._states = deque(maxlen=n)
 
     def check_cache_and_compute(self, params_values_dict,
-                                dependency_params=None, want_derived=False, cached=True):
+                                dependency_params=None, want_derived=False, cached=True, emulator=None, loglikes=None, validation_mode=False):
         """
         Takes a dictionary of parameter values and computes the products needed by the
         likelihood, or uses the cached value if that exists for these parameters.
@@ -226,22 +227,49 @@ class Theory(CobayaComponent):
 
         params_values_dict can be safely modified and stored.
         """
-
+        self.is_validated = False
         if self._input_params_extra:
             params_values_dict.update(
                 zip(self._input_params_extra,
                     self.provider.get_param(self._input_params_extra)))
-        self.log.debug("Got parameters %r", params_values_dict)
         state = None
         if cached:
-            for _state in self._states:
-                if _state["params"] == params_values_dict and \
-                        _state["dependency_params"] == dependency_params \
-                        and (not want_derived or _state["derived"] is not None):
-                    state = _state
-                    self.log.debug("Re-using computed results")
-                    self._states.remove(_state)
-                    break
+            # Only do, when we are curently not in the process of validating. Maybe change in future version
+            if not validation_mode:
+                if emulator is not None:
+                    if not emulator.in_validation:
+                        for _state in self._states:
+                            if _state["params"] == params_values_dict and \
+                                    _state["dependency_params"] == dependency_params \
+                                    and (not want_derived or _state["derived"] is not None):
+                                state = _state
+                                self.log.debug("Re-using computed results")
+                                self._states.remove(_state)
+                                self.is_validated = True
+                                break
+
+                else:
+                    for _state in self._states:
+                        if _state["params"] == params_values_dict and \
+                                _state["dependency_params"] == dependency_params \
+                                and (not want_derived or _state["derived"] is not None):
+                            state = _state
+                            self.log.debug("Re-using computed results")
+                            self._states.remove(_state)
+                            self.is_validated = True
+                            break
+
+        # HERE: Evaluate emulator here
+        if emulator is not None:
+            if state is None:
+                if not self.is_validated:
+                    self.log.debug("Try emulating new state")
+                    state = {"params": params_values_dict,
+                            "dependency_params": dependency_params,
+                            "derived": {} if want_derived else None}
+                    prev_loglike = sum(loglikes)
+                    state, self.is_validated = emulator.evaluate(self._name, state, want_derived, prev_loglike, **params_values_dict)
+
         if not state:
             self.log.debug("Computing new state")
             state = {"params": params_values_dict,
@@ -250,6 +278,14 @@ class Theory(CobayaComponent):
             if self.timer:
                 self.timer.start()
             try:
+                try:
+                    if emulator.in_validation:
+                        self.is_validated = False
+                        self.log.info("Validation mode CLASS" )
+                    else:
+                        self.is_validated = True
+                except:
+                    self.is_validated = True
                 if self.calculate(state, want_derived, **params_values_dict) is False:
                     return False
             except always_stop_exceptions:
@@ -268,7 +304,7 @@ class Theory(CobayaComponent):
                 self.timer.increment(self.log)
         # make this state the current one
         self._states.appendleft(state)
-        self._current_state = state
+        self._current_state = copy.deepcopy(state)
         return True
 
     @property
