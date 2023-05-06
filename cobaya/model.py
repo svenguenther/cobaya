@@ -103,6 +103,10 @@ class LogPosterior:
 
     def _logpost(self):
         """Computes logpost from prior and likelihood product."""
+        print("Computing logpost = logprior + loglike")
+        print(self.logprior)
+        print(self.loglike)
+        
         return self.logprior + self.loglike
 
     def _logpost_is_consistent(self):
@@ -382,15 +386,14 @@ class Model(HasLogger):
         self.log.debug("Got input parameters: %r", input_params)
         loglikes = np.zeros(len(self.likelihood))
         need_derived = self.requires_derived or return_derived or return_output_params
-        self.in_validation = True
+        self.in_validation = False
+        self.validation_request = True
         theory_flag = None # 0 = no theory used, 1 = theory used , 2 = theory used but in validation mode
         #cached = False
-        while(self.in_validation == True):
-            self.in_validation = False
-            if theory_flag is None:
-                theory_flag = 1
-            else:
-                theory_flag = 2
+        while(self.validation_request == True):
+            #self.in_validation = False
+            self.validation_request = False
+            theory_flag = 1
             for (component, like_index), param_dep in zip(self._component_order.items(),
                                                         self._params_of_dependencies):
                 depend_list = [input_params[p] for p in param_dep]
@@ -407,13 +410,20 @@ class Model(HasLogger):
                         dependency_params=depend_list, cached=cached, emulator=self.emulator, loglikes=loglikes, validation_mode=self.in_validation
                         )
                     if not component.is_validated:
+                        self.log.info("VALIDATION flag switch")
                         self.in_validation = True
+                        self.validation_request = True
+                        theory_flag=2
+                    
+                    
                 else:
                     compute_success = component.check_cache_and_compute(
                         params, want_derived=need_derived,
                         dependency_params=depend_list, cached=cached, validation_mode=self.in_validation)
                     if not component.is_validated:
                         self.in_validation = True
+                        self.validation_request = True
+                        theory_flag=2   
                 #self.log.info("CURRENT STATE PAST")
                 #self.log.info(component._current_state)
                 if not compute_success:
@@ -431,12 +441,19 @@ class Model(HasLogger):
                             "Likelihood %s has not returned a valid log-likelihood, "
                             "but %r instead.", component,
                             component.current_logp)  # type: ignore
-                if component.is_validated == False: # If one of the components remains in validation, we need to iterate the computation
-                    self.in_validation = True
+
                 # Erase the likelihoods if we are in validation mode
-                if self.in_validation:
-                    if like_index is not None:
-                        component._current_state = None
+                #if self.in_validation:
+                #    if like_index is not None:
+                #        component._current_state = None
+            
+            if self.validation_request == True:
+                self.in_validation = True
+            else:
+                self.in_validation = False
+
+        self.log.info("SUCCESS FLAG")
+
         # Here we add new data to the emulator. It is either accepted or rejected.
         if theory_flag == 1:
             if self.emulator is not None:

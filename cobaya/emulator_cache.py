@@ -221,7 +221,6 @@ class PCACache(CobayaComponent):
         new_dataframe = pd.DataFrame.from_dict({(i,j): data[i][j] for i in data.keys() for j in data[i].keys()}, orient='index')
 
         min_loglike = self.dataframe['loglike'].min()
-        #self.log.info("Min loglike: %f", min_loglike)
 
         #self.log.info(self.dataframe)
         if self._size() >= self.N:
@@ -231,17 +230,17 @@ class PCACache(CobayaComponent):
                 # update the loglikelihood
                 for theory in state.keys():
                     if self.dataframe.loc[(my_hash, theory),'loglike'] < loglike:
-                        #self.log.info("Update loglike")
+                        self.log.info("Update loglike")
                         self.dataframe.loc[(my_hash, theory),'loglike'] = loglike
                 return False
             else:
                 if loglike > min_loglike:
-                    self.log.debug("Add into in cache")
                     self.dataframe=pd.concat([self.dataframe, new_dataframe])
 
                     # Remove the datapoint with the lowest loglikelihood
-                    self.dataframe = self.dataframe.drop(self.dataframe['loglike'].idxmin())
-                    
+                    for _ in self.theories:
+                        self.dataframe = self.dataframe.drop(self.dataframe['loglike'].idxmin())
+
                     return True
                 return False
         else:
@@ -270,10 +269,7 @@ class PCACache(CobayaComponent):
     def _load_cache(self):
         return False
 
-
-
-
     # This function returns the size of the cache
     def _size(self):
         theory = list(self.dataframe.keys())[0]
-        return self.dataframe[theory].shape[0] 
+        return self.dataframe[theory].shape[0]/len(self.theories) 

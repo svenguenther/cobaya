@@ -18,6 +18,7 @@ import scipy as sc
 from sklearn.model_selection import train_test_split
 import time
 import os
+import gc
 
 class quantity_GP:
     name: str       # name of this GP
@@ -77,6 +78,8 @@ class Emulator(CobayaComponent):
         self.debug = True
         self.counter_emulator_used = 0
         self.counter_emulator_not_used = 0
+
+        self.last_evaluated_state = {}
 
         self.set_timing_on(True)
 
@@ -328,6 +331,8 @@ class Emulator(CobayaComponent):
 
         self.validation_loglikes = np.zeros(self.N_validation_states)
 
+        self.last_evaluated_state[theory] = copy.deepcopy(self.state[theory])
+
         return self.state[theory], True
 
     # This is the function that is called by the sampler
@@ -376,7 +381,11 @@ class Emulator(CobayaComponent):
                         else:
                             dim = len(element.options[key])
                         if key in self.must_provide[theory][element.name].keys():
-                            self.must_provide[theory][element.name][key] += dim
+                            if key in ['tt','te','ee']:
+                                if dim > self.must_provide[theory][element.name][key]:
+                                    self.must_provide[theory][element.name][key] = dim
+                            else:
+                                self.must_provide[theory][element.name][key] += dim
                         else:
                             self.must_provide[theory][element.name][key] = dim
                 else:
@@ -387,7 +396,11 @@ class Emulator(CobayaComponent):
                         else:
                             dim = len(element.options[key])
                         if key in self.must_provide[theory][element.name].keys():
-                            self.must_provide[theory][element.name][key] += dim
+                            if key in ['tt','te','ee']:
+                                if dim > self.must_provide[theory][element.name][key]:
+                                    self.must_provide[theory][element.name][key] = dim
+                            else:
+                                self.must_provide[theory][element.name][key] += dim
                         else:
                             self.must_provide[theory][element.name][key] = dim
             
@@ -406,6 +419,17 @@ class Emulator(CobayaComponent):
         for name, sub_state in state.items():
             if sub_state[0] is None:
                 theory_states[name] = sub_state[1]
+
+                # check whether the state was evaluated just before before
+                if name in self.last_evaluated_state.keys():
+                    
+                    for key,val in self.last_evaluated_state[name]['params'].items():
+                        if abs(sub_state[1]['params'][key]/val-1.0) <1.e-7: # This is a bit arbitrary nad not really safe
+                            self.log.info("State was predicted before!")
+                            return False
+                        else:
+                            continue
+
                 theory_name.append(name)
             else:
                 likelihood_states[name] = sub_state[1]
@@ -506,6 +530,12 @@ class PCA_GPEmulator(CobayaComponent):
         self._in_means = np.zeros(self.in_dim)
         self._in_stds = np.zeros(self.in_dim)
 
+        # create a mask of parameters that are used for training the GP. Unrelevant parameters are set to zero
+        if self.n_pca is not None:
+            self._in_mask = np.ones((self.n_pca,self.in_dim), dtype=bool)
+        else:
+            self._in_mask = np.ones((self.out_dim,self.in_dim), dtype=bool)
+
         self._pca = None
         self._singular_values = None
         self._data_out_pca = None
@@ -517,7 +547,7 @@ class PCA_GPEmulator(CobayaComponent):
 
         # precision parameters regarding the GP
         self._theta_boundary_scale = 4.0 # how far to go in each direction when searching for the best theta
-        self._N_restarts_initial = 100 # how many random restarts to do for the initial theta
+        self._N_restarts_initial = 40 # how many random restarts to do for the initial theta
         self._N_restarts = 10 # how many random restarts to do for the theta after the initial one
 
 
@@ -583,7 +613,12 @@ class PCA_GPEmulator(CobayaComponent):
                     ax.set_xlabel('Input')
                     ax.set_ylabel(self.name)
                     fig.savefig('./plots/data_'+self.name+'_'+str(i)+'.png')
-        
+            plt.figure().clear()
+            plt.close('all')
+            plt.close()
+            plt.cla()
+            plt.clf()
+            gc.collect()
 
         self.data_in = (self.data_in - self._in_means)/self._in_stds
         self.data_out = (self.data_out - self._out_means)/self._out_stds
@@ -606,7 +641,12 @@ class PCA_GPEmulator(CobayaComponent):
                     ax.set_ylabel(self.name)
                     fig.savefig('./plots/data_'+self.name+'_'+str(i)+'_norm.png')
 
-
+            plt.figure().clear()
+            plt.close('all')
+            plt.close()
+            plt.cla()
+            plt.clf()
+            gc.collect()
 
         return True
     
@@ -665,13 +705,25 @@ class PCA_GPEmulator(CobayaComponent):
         # if we have already some working kernels, we can help ourself by constraing the new ones to be similar
         if self._gps is None:
             if self.n_pca is not None:
-                self._kernels = [ConstantKernel() * RBF(np.ones(self.in_dim)) for i in range(self.n_pca)]
+                self._kernels = [ConstantKernel() * RBF() for i in range(self.n_pca)]
+                #self._kernels = [ConstantKernel() * RBF(np.ones(self.in_dim)) for i in range(self.n_pca)]
             else:
-                self._kernels = [ConstantKernel() * RBF(np.ones(self.in_dim)) for i in range(self.out_dim)]
+                self._kernels = [ConstantKernel() * RBF() for i in range(self.out_dim)]
+                #self._kernels = [ConstantKernel() * RBF(np.ones(self.in_dim)) for i in range(self.out_dim)]
         else:
             thetas= []   
             bounds = []
             for i,GP in enumerate(self._gps):
+
+                # veto parameters that are not relevant for the kernel
+                for j in range(self.in_dim):
+                    if GP.kernel_.theta[j+1]>10.9:
+                        self._in_mask[i,j] = False
+
+                
+                self.log.info('masked in')
+                self.log.info(self._in_mask[i])
+
                 # get theta 
                 thetas.append(GP.kernel_.theta)
                 bounds.append([[max(np.exp(theta-self._theta_boundary_scale),np.exp(-11.0)), min(np.exp(theta+self._theta_boundary_scale),np.exp(11.0))] for theta in GP.kernel_.theta])
@@ -700,12 +752,50 @@ class PCA_GPEmulator(CobayaComponent):
         if self._gps is None:
             if self.n_pca is not None:
                 self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts_initial) for i in range(self.n_pca)]
+
+                #do some GP input plots for PCA
+                for i in range(self.n_pca):
+                    for j in range(self.in_dim):
+                        fig,ax = plt.subplots()
+                        ax.scatter(self.data_in[:,j],self._data_out_pca[:,i])
+                        ax.set_xlabel('input')
+                        ax.set_ylabel('PCA component %d' % i)
+                        fig.savefig('./plots_pca_gp/%s_PCA_%d_%d.png' % (self.name,i,j))
+
+                plt.figure().clear()
+                plt.close('all')
+                plt.close()
+                plt.cla()
+                plt.clf()
+                gc.collect()
+
+
+
             else:
 
                 self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts_initial) for i in range(self.out_dim)]
         else:
             if self.n_pca is not None:
                 self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts) for i in range(self.n_pca)]
+
+
+
+                #do some GP input plots for PCA
+                for i in range(self.n_pca):
+                    for j in range(self.in_dim):
+                        fig,ax = plt.subplots()
+                        ax.scatter(self.data_in[:,j],self._data_out_pca[:,i])
+                        ax.set_xlabel('input')
+                        ax.set_ylabel('PCA component %d' % i)
+                        fig.savefig('./plots_pca_gp/PCA_%d_%d.png' % (i,j))
+
+                plt.figure().clear()
+                plt.close('all')
+                plt.close()
+                plt.cla()
+                plt.clf()
+                gc.collect()
+
             else:
 
                 self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts) for i in range(self.out_dim)]
@@ -758,7 +848,7 @@ class PCA_GPEmulator(CobayaComponent):
                 for i,GP in enumerate(self._gps):
                     self._data_out_pca_test[:,i], self._data_out_pca_test_std[:,i] = GP.predict(self.data_in[self.test_indices], return_std=True)
                     self._data_out_pca_test[:,i] = self._data_out_pca_test[:,i]*self._out_stds_pca[i]+self._out_means_pca[i]
-                    self._data_out_pca_test_std[:,i] = self._data_out_pca_test_std[:,i]*self._out_stds_pca[i]+self._out_means_pca[i]
+                    self._data_out_pca_test_std[:,i] = self._data_out_pca_test_std[:,i]*self._out_stds_pca[i]
             else:
                 self._data_out_test = np.zeros((len(self.test_indices), self.out_dim))
                 self._data_out_test_std = np.zeros((len(self.test_indices), self.out_dim))
@@ -786,6 +876,13 @@ class PCA_GPEmulator(CobayaComponent):
                     ax.grid(True)
                     ax.legend()
                     fig.savefig('./plots/test_'+self.name+'_'+str(i)+'_gp.png')
+
+            plt.figure().clear()
+            plt.close('all')
+            plt.close()
+            plt.cla()
+            plt.clf()
+            gc.collect()
 
             # Plot the PCA untransformed data
             if self.n_pca is not None:
@@ -852,6 +949,13 @@ class PCA_GPEmulator(CobayaComponent):
 
                     fig.savefig('./plots/test_'+self.name+'_'+str(ind)+'_gp_backtrafo.pdf')
  
+                plt.figure().clear()
+                plt.close('all')
+                plt.close()
+                plt.cla()
+                plt.clf()
+                gc.collect()
+
         if self.timer:
             self.timer.increment(self.log)
         

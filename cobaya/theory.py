@@ -284,6 +284,7 @@ class Theory(CobayaComponent):
                         self.log.info("Validation mode CLASS" )
                     else:
                         self.is_validated = True
+                        self.log.info("Ground mode CLASS" )
                 except:
                     self.is_validated = True
                 if self.calculate(state, want_derived, **params_values_dict) is False:
@@ -302,6 +303,11 @@ class Theory(CobayaComponent):
                     return False
             if self.timer:
                 self.timer.increment(self.log)
+
+        self.log.info("Computed state:")
+        self.log.info(state)
+        
+
         # make this state the current one
         self._states.appendleft(state)
         self._current_state = copy.deepcopy(state)
