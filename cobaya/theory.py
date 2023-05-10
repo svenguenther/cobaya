@@ -250,14 +250,17 @@ class Theory(CobayaComponent):
 
                 else:
                     for _state in self._states:
-                        if _state["params"] == params_values_dict and \
-                                _state["dependency_params"] == dependency_params \
-                                and (not want_derived or _state["derived"] is not None):
-                            state = _state
-                            self.log.debug("Re-using computed results")
-                            self._states.remove(_state)
-                            self.is_validated = True
-                            break
+                        try:
+                            if _state["params"] == params_values_dict and \
+                                    _state["dependency_params"] == dependency_params \
+                                    and (not want_derived or _state["derived"] is not None):
+                                state = _state
+                                self.log.debug("Re-using computed results")
+                                self._states.remove(_state)
+                                self.is_validated = True
+                                break
+                        except:
+                            continue
 
         # HERE: Evaluate emulator here
         if emulator is not None:
@@ -304,9 +307,6 @@ class Theory(CobayaComponent):
             if self.timer:
                 self.timer.increment(self.log)
 
-        self.log.info("Computed state:")
-        self.log.info(state)
-        
 
         # make this state the current one
         self._states.appendleft(state)

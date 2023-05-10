@@ -28,7 +28,7 @@ class EmulatorCache(CobayaComponent):
         self.set_logger("emulator_cache")
         self.N = 200 if 'cache_size' not in kwargs else kwargs['cache_size']
         self.initialized = False
-
+        self._proximity_threshold = 0.2
         self.theories = None
 
         self.dataframes = {} # a dict between theory and a dataframe
@@ -52,13 +52,21 @@ class EmulatorCache(CobayaComponent):
         self.initialized = True
 
     # This function provides data from the cache
-    def get_data(self, theory, keys):
+    def get_data(self, theory, keys, N=None):
         if self._size() > 0:
+            # Select indices of data points to be returned
+            if N is None:
+                N = self._size()                
+
             # Get a random data point from the cache
             self.log.debug("Getting data from cache")
             data = {}
             for key in keys:
-                data[key] = np.array([np.array(_) for _ in self.dataframes[theory][key].values])
+                data[key] = np.array([np.array(_) for _ in self.dataframes[theory].sort_values(by=['loglike']).tail(N)[key].values])
+                if key == 'tt':
+                    self.log.info('tt')
+                    ll = [_[0] for _ in data[key]]
+                    self.log.info(ll)
             self._newly_added_points = 0
             return data
         else:
@@ -66,8 +74,15 @@ class EmulatorCache(CobayaComponent):
     
     # This function adds data to the cache
     def add_data(self, data, loglike):
+
         # First check whether the cache is full
         if self._size() >= self.N:
+
+            # check proximity to existing data
+            if self._check_proximity(data[self.theories[0]]['params']):
+                self.log.debug("Data too close to existing data")
+                return False
+
             # Then check whether the new data is better than the worst data in the cache
             min_loglike = self.dataframes[self.theories[0]]['loglike'].min()
             self.log.debug("Min loglike in cache: {}".format(min_loglike))
@@ -118,6 +133,48 @@ class EmulatorCache(CobayaComponent):
                     self._newly_added_points += 1
                 return True
     
+
+    # This function investigates on the proximity of the new data point to the existing data points
+    def _check_proximity(self, new_params):
+        # frist get parameters from the cache
+        params = np.array([np.array(_) for _ in self.dataframes[self.theories[0]]['params'].values])
+
+        # calcualte mean and std of the parameters
+        params_mean = np.mean(params, axis=0)
+        params_std = np.std(params, axis=0)
+
+        # normalize the parameters
+        params = (params - params_mean)/params_std
+
+        # calculate the distance matrix
+        self.log.info("Calculating distance matrix")
+        _data_in_dist = np.zeros((params.shape[0],params.shape[0]))
+        for i in range(params.shape[0]):
+            for j in range(params.shape[0]):
+                _data_in_dist[i,j] = np.sqrt(np.sum((params[i,:]-params[j,:])**2))
+        
+        # select nearest neighbors
+        neighbour_dist = np.sort(_data_in_dist, axis=1)[:,1]
+        neighbour_dist_mean = np.mean(neighbour_dist)
+
+        # normalize the new parameters
+        new_params = (new_params - params_mean)/params_std
+
+        # calculate the distance between the new parameters and the existing parameters
+        dist = np.linalg.norm(params - new_params, axis=1)
+
+        # get the minimum distance
+        min_dist = np.min(dist)
+        self.log.info("Minimum distance: {}".format(min_dist))
+        self.log.info("Threshold distance: {}".format(self._proximity_threshold*neighbour_dist_mean))
+        self.log.info("neighbour_dist_mean: {}".format(neighbour_dist_mean))
+
+        # check whether the minimum distance is smaller than the threshold
+        if min_dist < self._proximity_threshold*neighbour_dist_mean:
+            return True
+        else:
+            return False
+
     # This function saves the cache to a file
     def _save_cache(self):
         return False
