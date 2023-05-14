@@ -80,22 +80,32 @@ class Emulator(CobayaComponent):
         self.validation_states = []
         self.predictors = None
 
+        self.in_PCA_validation = False
+        self.N_PCA_validation_states = 5 if 'N_PCA_validation_states' not in args[1] else args[1]['N_PCA_validation_states']
+        self.PCA_validation_loglikes = np.zeros(self.N_PCA_validation_states)
+        self.PCA_validation_states = []
+
+        self._pca_update = 2 if 'pca_update' not in args[1] else args[1]['pca_update']
+
         self.in_validation = False
-        self.debug = True
+        self.debug = False if 'debug' not in args[1] else args[1]['debug']
         self.counter_emulator_used = 0
         self.counter_emulator_not_used = 0
 
         # During burnin phase we use a reduced emulator size
         self._in_burnin_phase = True
         self._last_loglike_update = 0
-        self._N_burnin = 20
-        self._burnin_trigger = 50
+        self._N_burnin = 40 if 'training_size_burnin' not in args[1] else args[1]['training_size_burnin']
+        self._burnin_trigger = 50 if 'burnin_trigger' not in args[1] else args[1]['burnin_trigger']
+
+        self._gp_fit_size = 100 if 'gp_fit_size' not in args[1] else args[1]['gp_fit_size']
 
         self.last_evaluated_state = {}
 
         self.set_timing_on(True)
 
         # check if log file exists and delete it
+        # if self.debug:
         if os.path.exists('log_file.txt'):
             os.remove('log_file.txt')
 
@@ -104,11 +114,14 @@ class Emulator(CobayaComponent):
         # Create a cache instance
         self.data_cache = EmulatorCache(
             cache_size = 200 if 'training_size' not in args[1] else args[1]['training_size'],
+            proximity_threshold = 0.01 if 'proximity_threshold' not in args[1] else args[1]['proximity_threshold'],
+            delta_loglike_cache = 100 if 'delta_loglike_cache' not in args[1] else args[1]['delta_loglike_cache'],
         )
 
         # Create a cache instance for the PCA cache
         self.pca_cache = PCACache(
             cache_size = 200 if 'pca_cache_size' not in args[1] else args[1]['pca_cache_size'],
+            delta_loglike_cache = 100 if 'delta_loglike_cache' not in args[1] else args[1]['delta_loglike_cache'],
         )
 
         self.parameter_dimension = {}
@@ -124,6 +137,7 @@ class Emulator(CobayaComponent):
         return False
     
     def write_log_step(self, event, loglike=0.0):
+        #if self.debug:  # Change this to be relevant soon TODO [SG]
         with open('log_file.txt', 'a') as f:
             f.write('%f %s %d %d %d %f ' % (loglike, event, self.counter_emulator_used, self.counter_emulator_not_used, self.evalution_counter ,time.time()))
             for val in self.validation_loglikes:
@@ -168,21 +182,55 @@ class Emulator(CobayaComponent):
 
                 # Create a new GP
                 if type(value) == int:
-                    self.predictors[theory][key] = PCA_GPEmulator(name=str(key),out_dim=value,in_dim=len(state[theory]['params']), testset_fraction = self.testset_fraction, pca_cache=self.pca_cache)
+                    self.predictors[theory][key] = PCA_GPEmulator(name=str(key),
+                                                                  out_dim=value,in_dim=len(state[theory]['params']), 
+                                                                  testset_fraction = self.testset_fraction, 
+                                                                  pca_cache=self.pca_cache, 
+                                                                  debug=self.debug, 
+                                                                  _pca_update=self._pca_update,
+                                                                  _gp_fit_size=self._gp_fit_size)
                 elif type(value) == dict:
                     if len(value) == 1:
-                        self.predictors[theory][key] = PCA_GPEmulator(name=str(key),out_dim=value[list(value.keys())[0]],in_dim=len(state[theory]['params']), testset_fraction = self.testset_fraction, pca_cache=self.pca_cache)
+                        self.predictors[theory][key] = PCA_GPEmulator(name=str(key),
+                                                                      out_dim=value[list(value.keys())[0]],
+                                                                      in_dim=len(state[theory]['params']), 
+                                                                      testset_fraction = self.testset_fraction, 
+                                                                      pca_cache=self.pca_cache, 
+                                                                      debug=self.debug, 
+                                                                      _pca_update=self._pca_update,
+                                                                      _gp_fit_size=self._gp_fit_size)
                     else:
                         for k,v in value.items():   # TODO: super ugly, but works for now. Fix this
                             if key == 'Cl': 
-                                self.predictors[theory][k] = PCA_GPEmulator(name=str(k),out_dim=v+1,in_dim=len(state[theory]['params']), testset_fraction = self.testset_fraction, pca_cache=self.pca_cache)              
+                                self.predictors[theory][k] = PCA_GPEmulator(name=str(k),
+                                                                            out_dim=v+1,
+                                                                            in_dim=len(state[theory]['params']), 
+                                                                            testset_fraction = self.testset_fraction, 
+                                                                            pca_cache=self.pca_cache, 
+                                                                            debug=self.debug,
+                                                                            _pca_update=self._pca_update,
+                                                                            _gp_fit_size=self._gp_fit_size)              
                             else:
-                                self.predictors[theory][k] = PCA_GPEmulator(name=str(k),out_dim=v,in_dim=len(state[theory]['params']), testset_fraction = self.testset_fraction, pca_cache=self.pca_cache)              
+                                self.predictors[theory][k] = PCA_GPEmulator(name=str(k),
+                                                                            out_dim=v,
+                                                                            in_dim=len(state[theory]['params']), 
+                                                                            testset_fraction = self.testset_fraction, 
+                                                                            pca_cache=self.pca_cache, 
+                                                                            debug=self.debug, 
+                                                                            _pca_update=self._pca_update,
+                                                                            _gp_fit_size=self._gp_fit_size)              
                 else:
                     self.log.error("Unknown type of prediction: %s" % type(value))
             
             # for testing add a loglike predictor
-            self.predictors[theory]['loglike'] = PCA_GPEmulator(name='loglike',out_dim=1,in_dim=len(state[theory]['params']), testset_fraction = self.testset_fraction, pca_cache=self.pca_cache)
+            self.predictors[theory]['loglike'] = PCA_GPEmulator(name='loglike',
+                                                                out_dim=1,
+                                                                in_dim=len(state[theory]['params']), 
+                                                                testset_fraction = self.testset_fraction, 
+                                                                pca_cache=self.pca_cache, 
+                                                                debug=self.debug, 
+                                                                _pca_update=self._pca_update,
+                                                                _gp_fit_size=self._gp_fit_size)
 
         self.is_initialized = True
         return True
@@ -199,13 +247,13 @@ class Emulator(CobayaComponent):
             self.validation_states.append(copy.deepcopy(self.state))
 
         data_in = np.array([[value for key,value in state['params'].items()]])
-
         for name, GP in self.predictors[theory].items():
 
             test_pred = GP._sample(data_in,self.N_validation_states)
 
             # Add the prediction to the validation states
             for i in range(self.N_validation_states):
+                self.validation_states[i][theory]['params'] = state['params']
                 for key, value in self.validation_states[i][theory].items():
                     if key == name:
                         self.validation_states[i][theory][key] = test_pred[i]
@@ -214,6 +262,34 @@ class Emulator(CobayaComponent):
                             if k == name:
                                 self.validation_states[i][theory][key][k] = test_pred[i]
         
+
+    def _create_PCA_validation_states(self, theory, state):
+        self.log.info("Creating PCA validation states")
+
+        # No need for validation if not requested
+        if self.N_PCA_validation_states == 0:
+            return True
+        
+        self.PCA_validation_states = []
+        for i in range(self.N_PCA_validation_states):
+            self.PCA_validation_states.append(copy.deepcopy(self.state))
+
+        data_in = np.array([[value for key,value in state['params'].items()]])
+
+        for name, GP in self.predictors[theory].items():
+
+            test_pred = GP._sample(data_in,self.N_PCA_validation_states)
+
+            # Add the prediction to the validation states
+            for i in range(self.N_PCA_validation_states):
+                for key, value in self.validation_states[i][theory].items():
+                    if key == name:
+                        self.PCA_validation_states[i][theory][key] = test_pred[i]
+                    if type(value) == dict:
+                        for k,v in value.items():
+                            if k == name:
+                                self.PCA_validation_states[i][theory][key][k] = test_pred[i]
+
         #self.log.info(self.validation_states)
 
 
@@ -231,7 +307,8 @@ class Emulator(CobayaComponent):
                     self.write_log_step('burnin_end')
 
         #if (self.evalution_counter%100 == 0):
-        self.log.info("Emulator used %d; not used %d" % (self.counter_emulator_used,self.counter_emulator_not_used))
+        if not self.in_validation:
+            self.log.info("Emulator used %d; not used %d" % (self.counter_emulator_used,self.counter_emulator_not_used))
 
         # If we are not initialized yet, we cannot calculate anything
         if not self.is_initialized:
@@ -240,13 +317,25 @@ class Emulator(CobayaComponent):
             self.write_log_step('not_used')
             return None, True
         
-        self.log.debug((self.data_cache._newly_added_points+1) % self.learn_every)
+        #self.log.info("(self.data_cache._newly_added_points+1) self.learn_every")
+        #self.log.info((self.data_cache._newly_added_points+1) % self.learn_every)
 
-        # Should we train the emulator?
+        # Should we train the emulator? Then first load data to GPs
+        #if ((self.data_cache._newly_added_points+1) % self.learn_every == 0) and (self.counter_emulator_not_used>self.postpone_learning):
+        #    self.log.info("_load_data_to_GP")
+        #    if self.in_validation == False:
+        #        #self._create_PCA_validation_states(theory, state)
+        #        self.in_PCA_validation = True
+
+        # Do some PCA validation TODO
+
+
+        # Should we train the emulator? Then train I guess 
         if ((self.data_cache._newly_added_points+1) % self.learn_every == 0) and (self.counter_emulator_not_used>self.postpone_learning):
             self.log.info("_train_emulator")
             if self.in_validation == False:
                 self.write_log_step('train')
+                self._load_data_to_GP(renormalize=True)
                 self._train_emulator()
 
 
@@ -271,6 +360,11 @@ class Emulator(CobayaComponent):
                 precision = self.precision + (self._max_loglike - loglike)*self.precision_linear
             else:
                 precision = self.precision
+
+            # Ensure that our debug loglike are not artificially veto the validation
+            if self.debug:
+                if (self.validation_loglikes[self.N_validation_states-2] != 0.0) and (self.validation_loglikes[self.N_validation_states-1] == 0.0):
+                    precision = 9999999999.9
 
             if self.in_validation == True:
                 for i in range(self.N_validation_states):
@@ -348,6 +442,8 @@ class Emulator(CobayaComponent):
                             #self.log.info("Setting %s to %s" % (k, pred))
                             self.state[theory][key][k] = pred
 
+        self.state[theory]['params'] = state['params']
+
         self.counter_emulator_used += 1
 
         if self.timer:
@@ -357,7 +453,6 @@ class Emulator(CobayaComponent):
         self.validation_loglikes = np.zeros(self.N_validation_states)
 
         self.last_evaluated_state[theory] = copy.deepcopy(self.state[theory])
-
         return self.state[theory], True
 
     # This is the function that is called by the sampler
@@ -370,25 +465,36 @@ class Emulator(CobayaComponent):
 
         for theory in self.theories:
             for name, GP in self.predictors[theory].items():
-                # Get the data from the cache
-                self.log.info(name)
-                if self._in_burnin_phase:
-                    N = self._N_burnin
-                else:
-                    N = self.data_cache._size()
-                data = self.data_cache.get_data(theory, keys = ['params',name], N=N)
-
-                # Load the data into the GP
-                GP.load_training_data(data['params'],data[name])
-
-
                 # Create emulator by creating (if necessary) a PCA and train a GP
                 GP.create_emulator()
 
+        # reset the data cache
+        self.data_cache._newly_added_points = 0
         self._emulator_trained = True
 
         return True
     
+    # This function loads data to the GPs and potentially creates PCAs
+    def _load_data_to_GP(self, renormalize=True):
+        any_pca_created = False
+        for theory in self.theories:
+            for name, GP in self.predictors[theory].items():
+                # Get the data from the cache
+                if self._in_burnin_phase:
+                    N = self._N_burnin
+                else:
+                    N = self.data_cache._size()
+                data = self.data_cache.get_data(theory, keys = ['params',name,'loglike'], N=N)
+
+                # Load the data into the GP
+                pca_created = GP.load_training_data(data['params'],data[name],data['loglike'],renormalize=renormalize)
+
+                if pca_created:
+                    any_pca_created = True
+
+        return any_pca_created
+
+
     # Set the required parameters for each theory code
     def _set_theories(self, theory):
         self.theories.append(theory)
@@ -448,6 +554,11 @@ class Emulator(CobayaComponent):
             self._max_loglike = loglike
             self._last_loglike_update = self.counter_emulator_not_used+self.counter_emulator_used
 
+        # dont add very low likelihood points. Possibly -inf 
+        if loglike < -1.e+20:
+            return False
+
+
         theory_states = {}
         theory_name = []
         likelihood_states = {}
@@ -486,6 +597,8 @@ class Emulator(CobayaComponent):
             added = self.data_cache.add_data(cs_theory,loglike)
 
         if added:
+            self.log.info('ADDED STATE!!!')
+            #self.log.info(state)
             self.write_log_step('added', loglike)
         
         ## Initialize the PCA cache if not already done so
@@ -494,9 +607,28 @@ class Emulator(CobayaComponent):
         else:
             self.pca_cache.add_data({**cs_theory, **cs_likelihood},loglike,theory_name)
 
+        # Update the GP if a point was added and the emulator is actually trained:
+        if added and self._emulator_trained:
+            self._update_GP()
 
         return True
     
+
+    # function to update the GP without fitting the kernel. Also without renew the normalization
+    def _update_GP(self):
+        
+        # Load the data into the GP
+        self.log.debug("Loading data to GP")
+
+        # Load the data into the GP
+        self._load_data_to_GP(renormalize=False)
+
+        # Update the GP
+        self.log.debug("Updating GP")
+        for theory in self.theories:
+            for name, GP in self.predictors[theory].items():
+                GP.update_emulator()
+
     # condense the data to only the required quantities
     # TODO: [SG] is this the best way to do this?
     def _condense_data(self, state):
@@ -549,7 +681,7 @@ class PCA_GPEmulator(CobayaComponent):
         self.out_dim = kwargs['out_dim']
         self.in_dim = kwargs['in_dim']
 
-        self.debug=True
+        self.debug= kwargs['debug']
 
         self.testset_fraction = kwargs['testset_fraction']
 
@@ -584,13 +716,22 @@ class PCA_GPEmulator(CobayaComponent):
         
         # PCA counter and parameter when to update the PCA
         self._pca_counter = 0
-        self._pca_update = 2
+        self._pca_update = kwargs['_pca_update']
 
+        self._gp_fit_size = kwargs['_gp_fit_size']
+
+        self._gp_fitting_mode = 'random' # 'random' or 'bestfit' How to choose the data for the fitting process. Either sample randomly or choose best loglike values
+
+        self.data_in_add = None # data that is added to the training data
+        self.data_out_add = None # data that is added to the training data
+        
 
 
         self._pca = None
         self._singular_values = None
         self._data_out_pca = None
+        self._data_out_pca_add = None
+        self._data_out_pca_fit = None
 
         self.set_timing_on(True)
 
@@ -612,22 +753,23 @@ class PCA_GPEmulator(CobayaComponent):
         if self.out_dim == 1:
             self.n_pca = None
         elif self.out_dim > 1000:
-            self.n_pca = 8
+            self.n_pca = 10
         else:
             self.n_pca = None#self.out_dim
 
         return True
     
-    def load_training_data(self, data_in, data_out):
-        self.log.info("Loading data")
+    def load_training_data(self, data_in, data_out, loglike, renormalize=True):
+        self.log.debug("Loading data")
         self.data_in = data_in
         self.data_out = data_out
+        self.loglike = loglike
         if len(self.data_out.shape)==1:
             self.data_out = np.array(self.data_out).astype('float').reshape(-1,1) # this weird shape is important otherwise it breaks for some reason 
-        self._normalize_training_data()
+        self._normalize_training_data(renormalize)
 
 
-        if self.debug:
+        if self.debug and renormalize:
             # Calculate the distance matrix of data_in
             self._data_in_dist = np.zeros((self.data_in.shape[0],self.data_in.shape[0]))
             for i in range(self.data_in.shape[0]):
@@ -652,33 +794,32 @@ class PCA_GPEmulator(CobayaComponent):
             plt.savefig('./plots/hist_closest_neighbor.png')
             plt.close()
 
-                    
-
-
-
-        return True
+        # a new PCA is required every new round
+        pca_created = self._create_pca(renormalize)
+        return pca_created
     
-    def _normalize_training_data(self):
-        self.log.info("Normalizing data")
-        self._in_means = np.mean(self.data_in, axis=0)
-        self._in_stds = np.std(self.data_in, axis=0)
-        self._out_means = np.mean(self.data_out, axis=0)
-        self._out_stds = np.std(self.data_out, axis=0)
+    def _normalize_training_data(self, renormalize=True):
+        self.log.debug("Normalizing data")
+        if renormalize:
+            self._in_means = np.mean(self.data_in, axis=0)
+            self._in_stds = np.std(self.data_in, axis=0)
+            self._out_means = np.mean(self.data_out, axis=0)
+            self._out_stds = np.std(self.data_out, axis=0)
         
 
-        # check for zero stds
-        if type(self._out_stds)==np.float64:
-            if self._out_stds==0:
-                self._out_stds = 1
-        else:
-            self._out_stds[self._out_stds==0] = 1
-        if type(self._in_stds)==np.float64:
-            if self._in_stds==0:
-                self._in_stds = 1
-        else:
-            self._in_stds[self._in_stds==0] = 1
+            # check for zero stds
+            if type(self._out_stds)==np.float64:
+                if self._out_stds==0:
+                    self._out_stds = 1
+            else:
+                self._out_stds[self._out_stds==0] = 1
+            if type(self._in_stds)==np.float64:
+                if self._in_stds==0:
+                    self._in_stds = 1
+            else:
+                self._in_stds[self._in_stds==0] = 1
 
-        if self.debug:
+        if self.debug and renormalize:
             # plot the data
             if self.name in ['tt','te','ee','angular_diameter_distance','Hubble']:
                 for i in range(len(self.data_in[0])):
@@ -708,7 +849,7 @@ class PCA_GPEmulator(CobayaComponent):
         self.data_in = (self.data_in - self._in_means)/self._in_stds
         self.data_out = (self.data_out - self._out_means)/self._out_stds
 
-        if self.debug:
+        if self.debug and renormalize:
             # plot the data
             if self.name in ['tt','te','ee','angular_diameter_distance','Hubble']:
                 for i in range(len(self.data_in[0])):
@@ -735,12 +876,12 @@ class PCA_GPEmulator(CobayaComponent):
 
         return True
     
-    def _create_pca(self):
+    def _create_pca(self, renormalize=True):
 
         if self.n_pca is None:
-            return True
+            return False
         else:
-            if (self._pca_counter%self._pca_update)==0:
+            if renormalize and ((self._pca_counter%self._pca_update)==0):
                 self.log.info("Creating PCA")
                 self._pca = PCA(n_components=self.n_pca)
 
@@ -760,6 +901,13 @@ class PCA_GPEmulator(CobayaComponent):
                 # a new PCA was created. We cannot be certain on the components and their dependencies. Thus, we need to recompute the kernels on all input dimensiopns
                 self._use_reduced_input = False
 
+                # update counter
+                self._pca_counter += 1
+
+                pca_created = True
+            else:
+                pca_created = False
+
             self._data_out_pca = self._pca.transform(self.data_out)
 
             # retranform the data to check
@@ -771,9 +919,9 @@ class PCA_GPEmulator(CobayaComponent):
             # get the variance of the residuals and unnormalize
             self._pca_residual_std = np.std(residuals, axis=0)*self._out_stds
 
-            self.log.info('residual variance')
-            self.log.info(self._pca_residual_std)
-            self.log.info(self._pca_residual_std.shape)
+            #self.log.info('residual variance')
+            #self.log.info(self._pca_residual_std)
+            #self.log.info(self._pca_residual_std.shape)
             
 
             # normalize the pca compoenents
@@ -785,13 +933,11 @@ class PCA_GPEmulator(CobayaComponent):
             self._singular_values = self._pca.singular_values_
 
 
-            # update counter
-            self._pca_counter += 1
 
-            return True
+            return pca_created
 
 
-    def _create_kernel(self):
+    def _create_kernel(self, theta_boundary_scale= 3.0, update_mask = False):
         self.log.info("Creating kernel")
 
         # create kernel
@@ -810,7 +956,8 @@ class PCA_GPEmulator(CobayaComponent):
             for i,GP in enumerate(self._gps):
 
                 thetas.append([GP.kernel_.theta[0]])
-                bounds.append([[max(np.exp(GP.kernel_.theta[0]-self._theta_boundary_scale),np.exp(-11.0)), min(np.exp(GP.kernel_.theta[0]+self._theta_boundary_scale),np.exp(11.0))]])
+                bounds.append([[max(np.exp(GP.kernel_.theta[0]-theta_boundary_scale),np.exp(-11.0)), min(np.exp(GP.kernel_.theta[0]+theta_boundary_scale),np.exp(11.0))]])
+                
 
                 # veto parameters that are not relevant for the kernel
                 _ = 0
@@ -822,16 +969,16 @@ class PCA_GPEmulator(CobayaComponent):
                                 _+=1              
                             else:
                                 thetas[i].append(GP.kernel_.theta[_+1])
-                                bounds[i].append([max(np.exp(GP.kernel_.theta[_+1]-self._theta_boundary_scale),np.exp(-11.0)), min(np.exp(GP.kernel_.theta[_+1]+self._theta_boundary_scale),np.exp(11.0))])
+                                bounds[i].append([max(np.exp(GP.kernel_.theta[_+1]-theta_boundary_scale),np.exp(-11.0)), min(np.exp(GP.kernel_.theta[_+1]+theta_boundary_scale),np.exp(11.0))])
                                 _+=1              
                     else:
                         # if the previous kernel had the same number of parameters, we can use the same
                         if len(GP.kernel_.theta)==self.in_dim+1:
                             thetas[i].append(GP.kernel_.theta[j+1])
-                            bounds[i].append([max(np.exp(GP.kernel_.theta[j+1]-self._theta_boundary_scale),np.exp(-11.0)), min(np.exp(GP.kernel_.theta[j+1]+self._theta_boundary_scale),np.exp(11.0))])
+                            bounds[i].append([max(np.exp(GP.kernel_.theta[j+1]-theta_boundary_scale),np.exp(-11.0)), min(np.exp(GP.kernel_.theta[j+1]+theta_boundary_scale),np.exp(11.0))])
                         else:
                             thetas[i] = np.append(thetas[i],1.0)
-                            bounds[i] = np.append(bounds[i],np.array([[np.exp(-11.0), np.exp(11.0)]]))
+                            bounds[i] = np.append(bounds[i],np.array([[np.exp(-11.0), np.exp(11.0)]]), axis=0)
                         self._in_mask[i,j] = True
 
                 # transform the input mask to indices
@@ -851,11 +998,31 @@ class PCA_GPEmulator(CobayaComponent):
 
 
 
+            #self.log.info('self.n_pca')
+            #self.log.info(self.n_pca)
+            #self.log.info('self.out_dim')
+            #self.log.info(self.out_dim)
+
+            # special case at 0.0 due to some rounding errors
+            if theta_boundary_scale == 0.0:
+                if self.n_pca is not None:
+                    for i in range(self.n_pca):
+                        for j in range(len(thetas[i])):
+                            bounds[i][j] = [np.exp(thetas[i][j]),np.exp(thetas[i][j])]
+                else:
+                    for i in range(self.out_dim):
+                        for j in range(len(thetas[i])):
+                            bounds[i][j] = [np.exp(thetas[i][j]),np.exp(thetas[i][j])]
+                    
 
             if self.n_pca is not None:
                 self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1:]),length_scale_bounds=tuple(bounds[i][1:])) for i in range(self.n_pca)]
             else:
                 self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1:]),length_scale_bounds=tuple(bounds[i][1:])) for i in range(self.out_dim)]
+        
+
+        self.log.info('kernels done')
+        
         return True
 
     def _create_gp(self):
@@ -865,69 +1032,96 @@ class PCA_GPEmulator(CobayaComponent):
 
         self.log.info("Creating GP")
 
-        #if self._gps is not None:
-        #    for i,GP in enumerate(self._gps):
-        #        self.log.info('PRE GP')
-        #        self.log.info(GP.kernel_.get_params())
-        #        self.log.info(GP.kernel_.theta)
-
-
         # create GP if it is not already created
         if self._gps is None:
             if self.n_pca is not None:
-                self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts_initial) for i in range(self.n_pca)]
+                self.log.info('self.n_pca')
+                self.log.info(self.n_pca)
+                self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts_initial, alpha=1.e-8) for i in range(self.n_pca)]
 
-                #do some GP input plots for PCA
-                for i in range(self.n_pca):
-                    for j in range(self.in_dim):
-                        fig,ax = plt.subplots()
-                        ax.scatter(self.data_in[:,j],self._data_out_pca[:,i])
-                        ax.set_xlabel('input')
-                        ax.set_ylabel('PCA component %d' % i)
-                        fig.savefig('./plots_pca_gp/%s_PCA_%d_%d.png' % (self.name,i,j))
+                if self.debug:
+                    #do some GP input plots for PCA
+                    for i in range(self.n_pca):
+                        for j in range(self.in_dim):
+                            fig,ax = plt.subplots()
+                            ax.scatter(self.data_in[:,j],self._data_out_pca[:,i])
+                            ax.set_xlabel('input')
+                            ax.set_ylabel('PCA component %d' % i)
+                            fig.savefig('./plots_pca_gp/%s_PCA_%d_%d.png' % (self.name,i,j))
 
-                plt.figure().clear()
-                plt.close('all')
-                plt.close()
-                plt.cla()
-                plt.clf()
-                gc.collect()
+                    plt.figure().clear()
+                    plt.close('all')
+                    plt.close()
+                    plt.cla()
+                    plt.clf()
+                    gc.collect()
 
 
 
             else:
 
-                self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts_initial) for i in range(self.out_dim)]
+                self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts_initial, alpha=1.e-8) for i in range(self.out_dim)]
         else:
             if self.n_pca is not None:
-                self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts) for i in range(self.n_pca)]
+                self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts, alpha=1.e-8) for i in range(self.n_pca)]
 
 
+                if self.debug:
+                    #do some GP input plots for PCA
+                    for i in range(self.n_pca):
+                        for j in range(self.in_dim):
+                            fig,ax = plt.subplots()
+                            ax.scatter(self.data_in[:,j],self._data_out_pca[:,i])
+                            ax.set_xlabel('input')
+                            ax.set_ylabel('PCA component %d' % i)
+                            fig.savefig('./plots_pca_gp/%s_PCA_%d_%d.png' % (self.name,i,j))
 
-                #do some GP input plots for PCA
-                for i in range(self.n_pca):
-                    for j in range(self.in_dim):
-                        fig,ax = plt.subplots()
-                        ax.scatter(self.data_in[:,j],self._data_out_pca[:,i])
-                        ax.set_xlabel('input')
-                        ax.set_ylabel('PCA component %d' % i)
-                        fig.savefig('./plots_pca_gp/%s_PCA_%d_%d.png' % (self.name,i,j))
-
-                plt.figure().clear()
-                plt.close('all')
-                plt.close()
-                plt.cla()
-                plt.clf()
-                gc.collect()
+                    plt.figure().clear()
+                    plt.close('all')
+                    plt.close()
+                    plt.cla()
+                    plt.clf()
+                    gc.collect()
 
             else:
 
-                self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts) for i in range(self.out_dim)]
+                self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts, alpha=1.e-8) for i in range(self.out_dim)]
+
+
+        # here we check the size of the dataset. If it is larger than we require to fit the kernels,
+        # we split the dataset into a fitting and additional dataset. The fitting dataset is used to fit the GP
+        # and the additional dataset is used to feed the GP with a fixed Kernel.
+
+        if self.data_in.shape[0] > self._gp_fit_size:
+            
+            if self._gp_fitting_mode == 'random':
+
+                # indices for fitting 
+                indices = np.arange(len(self.data_in))
+                np.random.shuffle(indices)
+                fit_indices = indices[:self._gp_fit_size]
+                add_indices = indices[self._gp_fit_size:]
+
+                self.data_in_add = self.data_in[add_indices]
+                self.data_out_add = self.data_out[add_indices]
+
+                self.data_in_fit = self.data_in[fit_indices]
+                self.data_out_fit = self.data_out[fit_indices]
+
+                if self.n_pca is not None:
+                    self._data_out_pca_add = self._data_out_pca[add_indices]
+                    self._data_out_pca_fit = self._data_out_pca[fit_indices]
 
 
 
 
-        self.train_indices, self.test_indices = train_test_split(np.arange(len(self.data_in)), test_size=self.testset_fraction, random_state=42)
+        else:
+            self.data_in_fit = self.data_in
+            self.data_out_fit = self.data_out
+            self._data_out_pca_fit = self._data_out_pca
+
+
+        self.train_indices, self.test_indices = train_test_split(np.arange(len(self.data_in_fit)), test_size=self.testset_fraction, random_state=42)
 
         self.log.info("Test set size: %d" % len(self.test_indices))
         self.log.info("Train set size: %d" % len(self.train_indices))
@@ -935,6 +1129,7 @@ class PCA_GPEmulator(CobayaComponent):
 
         # Train the GP
         self.log.info("Training GP")
+        start = time.time()
         for i,GP in enumerate(self._gps):
             #self.log.info("Training GP %d" % i)
             #self.log.info(self._in_mask_indices[i])
@@ -948,28 +1143,37 @@ class PCA_GPEmulator(CobayaComponent):
             
             
             if self.n_pca is not None:
-                GP.fit(self.data_in[np.ix_(self.train_indices, self._in_mask_indices[i])], self._data_out_pca[self.train_indices,i])
-                score_train = GP.score(self.data_in[np.ix_(self.train_indices, self._in_mask_indices[i])], self._data_out_pca[self.train_indices,i])
-                score_test = GP.score(self.data_in[np.ix_(self.test_indices, self._in_mask_indices[i])], self._data_out_pca[self.test_indices,i])
+                GP.fit(self.data_in_fit[np.ix_(self.train_indices, self._in_mask_indices[i])], self._data_out_pca_fit[self.train_indices,i])
+                score_train = GP.score(self.data_in_fit[np.ix_(self.train_indices, self._in_mask_indices[i])], self._data_out_pca_fit[self.train_indices,i])
+                score_test = GP.score(self.data_in_fit[np.ix_(self.test_indices, self._in_mask_indices[i])], self._data_out_pca_fit[self.test_indices,i])
                 self.log.debug("GP score train: %f" % score_train)
                 self.log.debug("GP score test: %f" % score_test)
             else:
                 if len(self._gps) == 1:
-                    GP.fit(self.data_in[np.ix_(self.train_indices, self._in_mask_indices[i])], self.data_out[self.train_indices])
-                    score_train = GP.score(self.data_in[np.ix_(self.train_indices, self._in_mask_indices[i])], self.data_out[self.train_indices,i])
-                    score_test = GP.score(self.data_in[np.ix_(self.test_indices, self._in_mask_indices[i])], self.data_out[self.test_indices,i])
+                    GP.fit(self.data_in_fit[np.ix_(self.train_indices, self._in_mask_indices[i])], self.data_out_fit[self.train_indices])
+                    score_train = GP.score(self.data_in_fit[np.ix_(self.train_indices, self._in_mask_indices[i])], self.data_out_fit[self.train_indices,i])
+                    score_test = GP.score(self.data_in_fit[np.ix_(self.test_indices, self._in_mask_indices[i])], self.data_out_fit[self.test_indices,i])
                     self.log.debug("GP score train: %f" % score_train)
                     self.log.debug("GP score test: %f" % score_test)
                 else:
-                    GP.fit(self.data_in[np.ix_(self.train_indices, self._in_mask_indices[i])], self.data_out[self.train_indices,i])
-                    score_train = GP.score(self.data_in[np.ix_(self.train_indices, self._in_mask_indices[i])], self.data_out[self.train_indices,i])
-                    score_test = GP.score(self.data_in[np.ix_(self.test_indices, self._in_mask_indices[i])], self.data_out[self.test_indices,i])
+                    GP.fit(self.data_in_fit[np.ix_(self.train_indices, self._in_mask_indices[i])], self.data_out_fit[self.train_indices,i])
+                    score_train = GP.score(self.data_in_fit[np.ix_(self.train_indices, self._in_mask_indices[i])], self.data_out_fit[self.train_indices,i])
+                    score_test = GP.score(self.data_in_fit[np.ix_(self.test_indices, self._in_mask_indices[i])], self.data_out_fit[self.test_indices,i])
                     self.log.debug("GP score train: %f" % score_train)
                     self.log.debug("GP score test: %f" % score_test)
         
 
             self.log.info('post thetas')
             self.log.info(GP.kernel_.theta)
+
+        self.log.info("Time to fit kernel: %f" % (time.time() - start))
+
+
+        # Once the kernel are fitted we can calculate the full GP including the additional dataset.
+        # This is done by setting the kernel to fixed and using the additional dataset as input.
+        # The output is then used to train the GP.
+        if self.data_in.shape[0] > self._gp_fit_size:
+            self.update_emulator()
 
 
         # use reduced input for the next GP
@@ -993,20 +1197,20 @@ class PCA_GPEmulator(CobayaComponent):
                 self._data_out_pca_test = np.zeros((len(self.test_indices), self.n_pca))
                 self._data_out_pca_test_std = np.zeros((len(self.test_indices), self.n_pca))
                 for i,GP in enumerate(self._gps):
-                    self._data_out_pca_test[:,i], self._data_out_pca_test_std[:,i] = GP.predict(self.data_in[np.ix_(self.test_indices, self._in_mask_indices[i])], return_std=True)
+                    self._data_out_pca_test[:,i], self._data_out_pca_test_std[:,i] = GP.predict(self.data_in_fit[np.ix_(self.test_indices, self._in_mask_indices[i])], return_std=True)
                     self._data_out_pca_test[:,i] = self._data_out_pca_test[:,i]*self._out_stds_pca[i]+self._out_means_pca[i]
                     self._data_out_pca_test_std[:,i] = self._data_out_pca_test_std[:,i]*self._out_stds_pca[i]
             else:
                 self._data_out_test = np.zeros((len(self.test_indices), self.out_dim))
                 self._data_out_test_std = np.zeros((len(self.test_indices), self.out_dim))
                 for i,GP in enumerate(self._gps):
-                    self._data_out_test[:,i], self._data_out_test_std[:,i] = GP.predict(self.data_in[np.ix_(self.test_indices, self._in_mask_indices[i])], return_std=True)
+                    self._data_out_test[:,i], self._data_out_test_std[:,i] = GP.predict(self.data_in_fit[np.ix_(self.test_indices, self._in_mask_indices[i])], return_std=True)
             
             # Plot the test set
             if self.n_pca is not None:
                 for i in range(len(self._data_out_pca_test[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
-                    ax.errorbar(self._data_out_pca[self.test_indices,i], self._data_out_pca[self.test_indices,i]-(self._data_out_pca_test[:,i]-self._out_means_pca[i])/self._out_stds_pca[i], yerr=(self._data_out_pca_test_std[:,i]-self._out_means_pca[i])/self._out_stds_pca[i], fmt='o', label='Predicted')
+                    ax.errorbar(self._data_out_pca_fit[self.test_indices,i], self._data_out_pca_fit[self.test_indices,i]-(self._data_out_pca_test[:,i]-self._out_means_pca[i])/self._out_stds_pca[i], yerr=(self._data_out_pca_test_std[:,i]-self._out_means_pca[i])/self._out_stds_pca[i], fmt='o', label='Predicted')
                     ax.set_xlabel('true')
                     ax.set_ylabel('predicted - true')
                     ax.set_title(self.name)
@@ -1016,7 +1220,7 @@ class PCA_GPEmulator(CobayaComponent):
             else:
                 for i in range(len(self._data_out_test[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
-                    ax.errorbar(self.data_out[self.test_indices,i], self.data_out[self.test_indices,i]-self._data_out_test[:,i], yerr=self._data_out_test_std[:,i], fmt='o', label='Predicted')
+                    ax.errorbar(self.data_out_fit[self.test_indices,i], self.data_out_fit[self.test_indices,i]-self._data_out_test[:,i], yerr=self._data_out_test_std[:,i], fmt='o', label='Predicted')
                     ax.set_xlabel('true')
                     ax.set_ylabel('predicted - true')
                     ax.set_title(self.name)
@@ -1031,20 +1235,20 @@ class PCA_GPEmulator(CobayaComponent):
                 self._data_out_pca_train = np.zeros((len(self.train_indices), self.n_pca))
                 self._data_out_pca_train_std = np.zeros((len(self.train_indices), self.n_pca))
                 for i,GP in enumerate(self._gps):
-                    self._data_out_pca_train[:,i], self._data_out_pca_train_std[:,i] = GP.predict(self.data_in[np.ix_(self.train_indices, self._in_mask_indices[i])], return_std=True)
+                    self._data_out_pca_train[:,i], self._data_out_pca_train_std[:,i] = GP.predict(self.data_in_fit[np.ix_(self.train_indices, self._in_mask_indices[i])], return_std=True)
                     self._data_out_pca_train[:,i] = self._data_out_pca_train[:,i]*self._out_stds_pca[i]+self._out_means_pca[i]
                     self._data_out_pca_train_std[:,i] = self._data_out_pca_train_std[:,i]*self._out_stds_pca[i]
             else:
                 self._data_out_train = np.zeros((len(self.train_indices), self.out_dim))
                 self._data_out_train_std = np.zeros((len(self.train_indices), self.out_dim))
                 for i,GP in enumerate(self._gps):
-                    self._data_out_train[:,i], self._data_out_train_std[:,i] = GP.predict(self.data_in[np.ix_(self.train_indices, self._in_mask_indices[i])], return_std=True)
+                    self._data_out_train[:,i], self._data_out_train_std[:,i] = GP.predict(self.data_in_fit[np.ix_(self.train_indices, self._in_mask_indices[i])], return_std=True)
             
             # Plot the train set
             if self.n_pca is not None:
                 for i in range(len(self._data_out_pca_train[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
-                    ax.errorbar(self._data_out_pca[self.train_indices,i], self._data_out_pca[self.train_indices,i]-(self._data_out_pca_train[:,i]-self._out_means_pca[i])/self._out_stds_pca[i], yerr=(self._data_out_pca_train_std[:,i]-self._out_means_pca[i])/self._out_stds_pca[i], fmt='o', label='Predicted')
+                    ax.errorbar(self._data_out_pca_fit[self.train_indices,i], self._data_out_pca_fit[self.train_indices,i]-(self._data_out_pca_train[:,i]-self._out_means_pca[i])/self._out_stds_pca[i], yerr=(self._data_out_pca_train_std[:,i]-self._out_means_pca[i])/self._out_stds_pca[i], fmt='o', label='Predicted')
                     ax.set_xlabel('true')
                     ax.set_ylabel('predicted - true')
                     ax.set_title(self.name)
@@ -1054,7 +1258,7 @@ class PCA_GPEmulator(CobayaComponent):
             else:
                 for i in range(len(self._data_out_test[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
-                    ax.errorbar(self.data_out[self.train_indices,i], self.data_out[self.train_indices,i]-self._data_out_train[:,i], yerr=self._data_out_train_std[:,i], fmt='o', label='Predicted')
+                    ax.errorbar(self.data_out_fit[self.train_indices,i], self.data_out_fit[self.train_indices,i]-self._data_out_train[:,i], yerr=self._data_out_train_std[:,i], fmt='o', label='Predicted')
                     ax.set_xlabel('true')
                     ax.set_ylabel('predicted - true')
                     ax.set_title(self.name)
@@ -1072,14 +1276,14 @@ class PCA_GPEmulator(CobayaComponent):
             # Plot the PCA untransformed data
             if self.n_pca is not None:
 
-                original_data = self.data_out[self.test_indices] * self._out_stds + self._out_means
+                original_data = self.data_out_fit[self.test_indices] * self._out_stds + self._out_means
                 test_data = np.zeros(original_data.shape)
                 test_unc = np.zeros(original_data.shape)
 
                 #self.log.info('original_data.shape')
                 #self.log.info(original_data.shape)
-                #self.log.info('self.data_out')
-                #self.log.info(self.data_out.shape)
+                #self.log.info('self.data_out_fit')
+                #self.log.info(self.data_out_fit.shape)
                 #self.log.info('self._out_stds')
                 #self.log.info(self._out_stds.shape)
                 #self.log.info('self._out_means')
@@ -1141,17 +1345,40 @@ class PCA_GPEmulator(CobayaComponent):
                 plt.clf()
                 gc.collect()
 
+
+
         if self.timer:
             self.timer.increment(self.log)
         
         return True
     
     def create_emulator(self):
-        # a new PCA is required every new round
-        self._create_pca()
         # Create the kernels if there are not allocated yet. Otherwise reuse the old ones
-        self._create_kernel()
+        self._create_kernel(self._theta_boundary_scale, update_mask = True)
         self._create_gp()
+        return True
+
+    # THis function takes the most recent kernel and fits it to all data
+    def update_emulator(self):
+        start = time.time()
+        # create kernels again with fixed values
+        self._create_kernel(0.0, update_mask=False)
+        self.log.info("Training GP on additional data")
+
+        if self.n_pca is not None:
+            self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=0, alpha=1.e-8) for i in range(self.n_pca)]
+        else:
+            self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=0, alpha=1.e-8) for i in range(self.out_dim)]
+
+        for i,GP in enumerate(self._gps):
+            # Train the GP on all data
+            if self.n_pca is not None:
+                GP.fit(self.data_in[:,self._in_mask_indices[i]], self._data_out_pca[:,i])
+            else:
+                GP.fit(self.data_in[:,self._in_mask_indices[i]], self.data_out[:,i])
+
+        self.log.info("Time to fit full GP: %f" % (time.time() - start))
+
         return True
     
     def _predict(self, data_in):
@@ -1202,6 +1429,33 @@ class PCA_GPEmulator(CobayaComponent):
             data_out = np.zeros((n_samples, self.out_dim))
             for i, GP in enumerate(self._gps):
                 data_out[:,i] = GP.sample_y(data_in[:,self._in_mask[i]], n_samples=n_samples, random_state=None)
+
+        # Unnormalize the data
+        data_out = data_out*self._out_stds + self._out_means
+
+        # Add PCA related uncertainty
+        if self.n_pca is not None:
+            data_out = data_out + np.outer(np.random.normal(np.zeros(n_samples)), self._pca_residual_std)
+
+        return data_out
+    
+    # This function is used to sample from the emulator with the PCA uncertainty. The difference to the _predict function is
+    # that the _predict function returns the mean and the standard deviation of the emulator. The
+    # _sample function additionally samples the uncertainty of the emulator.
+    def _sample_PCA(self, data_in, n_samples=1):
+        # Normalize the data
+        data_in = (data_in - self._in_means)/self._in_stds
+        # Predict the data
+        if self.n_pca is not None:
+            data_out = np.zeros((n_samples, self.n_pca))
+            for i, GP in enumerate(self._gps):
+                data_out[:,i] = GP.predict(data_in[:,self._in_mask[i]])
+                data_out[:,i] = data_out[:,i]*self._out_stds_pca[i] + self._out_means_pca[i]
+            data_out = self._pca.inverse_transform(data_out)
+        else:
+            data_out = np.zeros((n_samples, self.out_dim))
+            for i, GP in enumerate(self._gps):
+                data_out[:,i] = GP.predict(data_in[:,self._in_mask[i]])
 
         # Unnormalize the data
         data_out = data_out*self._out_stds + self._out_means

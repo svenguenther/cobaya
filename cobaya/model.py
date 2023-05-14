@@ -383,7 +383,7 @@ class Model(HasLogger):
         outpar_dict: ParamValuesDict = {}
         compute_success = True
         self.provider.set_current_input_params(input_params)
-        self.log.debug("Got input parameters: %r", input_params)
+        self.log.info("Got input parameters: %r", input_params)
         loglikes = np.zeros(len(self.likelihood))
         need_derived = self.requires_derived or return_derived or return_output_params
         self.in_validation = False
@@ -410,7 +410,6 @@ class Model(HasLogger):
                         dependency_params=depend_list, cached=cached, emulator=self.emulator, loglikes=loglikes, validation_mode=self.in_validation
                         )
                     if not component.is_validated:
-                        self.log.info("VALIDATION flag switch")
                         self.in_validation = True
                         self.validation_request = True
                         theory_flag=2

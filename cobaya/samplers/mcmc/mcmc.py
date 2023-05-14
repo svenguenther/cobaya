@@ -442,7 +442,6 @@ class MCMC(CovmatSampler):
         accept = self.metropolis_accept(trial_results.logpost, self.current_point.logpost)
         self.log.info("Trial point logpost %s", trial_results.logpost)
         self.log.info("Current logpost %s", self.current_point.logpost)
-        self.log.info(accept)
         self.process_accept_or_reject(accept, trial, trial_results)
         return accept
 
