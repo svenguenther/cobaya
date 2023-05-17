@@ -505,7 +505,7 @@ class Emulator(CobayaComponent):
     # Set the required parameters for each theory code
     def _set_must_provide(self, must_provide, theory):
         self.must_provide[theory] = {}
-
+        
         for element in must_provide:
             if element.options is None:
                 dim = 1
@@ -513,14 +513,14 @@ class Emulator(CobayaComponent):
             elif type(element.options)==dict:
                 if element.name in self.must_provide[theory].keys():
                     for key in element.options:
-                        if type(element.options[key])==int:
+                        if type(element.options[key])==int or type(element.options[key])==np.int64:
                             dim = element.options[key]
                         else:
                             dim = len(element.options[key])
                         if key in self.must_provide[theory][element.name].keys():
-                            if key in ['tt','te','ee']:
+                            if key in ['tt','te','ee','pp']:
                                 if dim > self.must_provide[theory][element.name][key]:
-                                    self.must_provide[theory][element.name][key] = dim
+                                    self.must_provide[theory][element.name][key] = 2508#dim #pp is only required to 2500 but cobaya requires 2508
                             else:
                                 self.must_provide[theory][element.name][key] += dim
                         else:
@@ -533,14 +533,14 @@ class Emulator(CobayaComponent):
                         else:
                             dim = len(element.options[key])
                         if key in self.must_provide[theory][element.name].keys():
-                            if key in ['tt','te','ee']:
+                            if key in ['tt','te','ee','pp']:
                                 if dim > self.must_provide[theory][element.name][key]:
-                                    self.must_provide[theory][element.name][key] = dim
+                                    self.must_provide[theory][element.name][key] = 2508
                             else:
                                 self.must_provide[theory][element.name][key] += dim
                         else:
                             self.must_provide[theory][element.name][key] = dim
-            
+        self.must_provide['classy']['Cl']['pp'] = 2508
         return False
 
     def get_must_provide(self):
@@ -1381,7 +1381,7 @@ class PCA_GPEmulator(CobayaComponent):
 
         return True
     
-    def _predict(self, data_in):
+    def _predict(self, data_in):        
         # Normalize the data
         data_in = (data_in - self._in_means)/self._in_stds
         #self.log.info(self.name)
