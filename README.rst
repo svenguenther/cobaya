@@ -8,25 +8,40 @@ This code implements a native emulator for the Bayesian inference code Cobaya. T
 The usage is as follows. You add to your cobaya input dict or ini file following element. All values stated are the default values:
 
 emulator:
-   postpone_learning:80,            # number of simulation calls before the emulator is used. Required to get useful PCA and to not train the burn-in
-   learn_every: 20,                 # every N new data points the kernel of the GP is fitted. This is more expensive than just adding a new point to your GP
-   training_size: 1000,             # maximum datasize of the GP. When exceeded, points with the largest loglike will be removed
-   gp_fit_size: 60,                 # data size which is used to compute the GP kernel
-   pca_cache_size: 2000,            # size of the cache to compute the PCA. It scales better with dimensionality than the training size
-   precision: 0.2,                  # precision criterium for the emulator to be used
-   precision_linear:0.0,            # linear precision criterium
-                                    # Total tot_precision = precision + precision_linear * (loglike_max - loglike)   # Thus, we allow data points which are further away from the bestfit point to be more noisy
-   N_validation_states: 10,         # number of validation to estimate the accuracy of the emulator
-   testset_fraction: 0.1,           # fraction of the training set to use for validation
-   debug: True,                     # expensive debug mode which makes a lot of plots
-   pca_update: 1,                   # update PCA every N training steps
-   training_size_burnin: 60,        # number of training points during burnin mode
-   burnin_trigger: 1,               # number of training points after which to switch to normal mode  
-   delta_loglike_cache: 300,        # only data points with a delta_loglike + min_loglike are cached. All other points are removed from the cache     
+   **postpone_learning:** 80,            # number of simulation calls before the emulator is used. Required to get useful PCA and to not train the burn-in \
+   
+   **learn_every:** 20,                 # every N new data points the kernel of the GP is fitted. This is more expensive than just adding a new point to your GP \
+   
+   **training_size:** 1000,             # maximum datasize of the GP. When exceeded, points with the largest loglike will be removed \
+   
+   **gp_fit_size:** 60,                 # data size which is used to compute the GP kernel \
+   
+   **pca_cache_size:** 2000,            # size of the cache to compute the PCA. It scales better with dimensionality than the training size \
+   
+   **precision:** 0.2,                  # precision criterium for the emulator to be used \
+   
+   **precision_linear:** 0.0,            # linear precision criterium \
+   
+                                          # Total tot_precision = precision + precision_linear * (loglike_max - loglike)   # Thus, we allow data points which are further away from the bestfit point to be more noisy \
+                                          
+   **N_validation_states:** 10,         # number of validation to estimate the accuracy of the emulator \
+   
+   **testset_fraction:** 0.1,           # fraction of the training set to use for validation \
+   
+   **debug:** True,                     # expensive debug mode which makes a lot of plots \
+   
+   **pca_update:** 1,                   # update PCA every N training steps \
+   
+   **training_size_burnin:** 60,        # number of training points during burnin mode \
+   
+   **burnin_trigger:** 1,               # number of training points after which to switch to normal mode  \
+   
+   **delta_loglike_cache:** 300,        # only data points with a delta_loglike + min_loglike are cached. All other points are removed from the cache   \  
 
 
 ===================
 
+Author: Sven Günther
 
 .. image:: ./img/logo_ttk.png
    :alt: RWTH Aachen
