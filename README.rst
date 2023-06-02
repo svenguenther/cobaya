@@ -1,104 +1,35 @@
-*Cobaya*, a code for Bayesian analysis in Cosmology
+*GPCA emulator*, an native emulator for Cobaya
 ===================================================
 
-:Author: `Jesus Torrado`_ and `Antony Lewis`_
+*Code under progress!*
 
-:Source: `Source code at GitHub <https://github.com/CobayaSampler/cobaya>`_
+This code implements a native emulator for the Bayesian inference code Cobaya. This emulator is using active learning and accuracy estimation that ensures reliable predictions.
 
-:Documentation: `Documentation at Readthedocs <https://cobaya.readthedocs.org>`_
+The usage is as follows. You add to your cobaya input dict or ini file following element. All values stated are the default values:
 
-:Licence: `LGPL <https://www.gnu.org/licenses/lgpl-3.0.en.html>`_ + mandatory bug reporting asap + mandatory `arXiv'ing <https://arxiv.org>`_ of publications using it (see `LICENCE.txt <https://github.com/CobayaSampler/cobaya/blob/master/LICENCE.txt>`_ for exceptions). The documentation is licensed under the `GFDL <https://www.gnu.org/licenses/fdl-1.3.en.html>`_.
-
-:E-mail list: https://cosmocoffee.info/cobaya/ – **sign up for important bugs and release announcements!**
-
-:Support: For general support, CosmoCoffee_; for bugs and issues, use the `issue tracker <https://github.com/CobayaSampler/cobaya/issues>`_.
-
-:Installation: ``pip install cobaya --upgrade`` (see the `installation instructions <https://cobaya.readthedocs.io/en/latest/installation.html>`_; in general do *not* clone)
-
-.. image:: https://travis-ci.com/CobayaSampler/cobaya.svg?branch=master
-   :target: https://app.travis-ci.com/CobayaSampler/cobaya
-.. image:: https://img.shields.io/pypi/v/cobaya.svg?style=flat
-   :target: https://pypi.python.org/pypi/cobaya/
-.. image:: https://readthedocs.org/projects/cobaya/badge/?version=latest
-   :target: https://cobaya.readthedocs.org/en/latest
-.. image:: https://codecov.io/gh/CobayaSampler/cobaya/branch/master/graphs/badge.svg
-   :target: https://codecov.io/github/CobayaSampler/cobaya/branch/master
-.. image:: https://img.shields.io/badge/arXiv-2005.05290-b31b1b.svg?color=0B6523
-   :target: https://arxiv.org/abs/2005.05290
-
-**Cobaya** (**co**\ de for **bay**\ esian **a**\ nalysis, and Spanish for *Guinea Pig*) is a framework for sampling and statistical modelling: it allows you to explore an arbitrary prior or posterior using a range of Monte Carlo samplers (including the advanced MCMC sampler from CosmoMC_, and the advanced nested sampler PolyChord_). The results of the sampling can be analysed with GetDist_. It supports MPI parallelization (and very soon HPC containerization with Docker/Shifter and Singularity).
-
-Its authors are `Jesus Torrado`_ and `Antony Lewis`_. Some ideas and pieces of code have been adapted from other codes (e.g CosmoMC_ by `Antony Lewis`_ and contributors, and `Monte Python`_, by `J. Lesgourgues`_ and `B. Audren`_).
-
-**Cobaya** has been conceived from the beginning to be highly and effortlessly extensible: without touching **cobaya**'s source code, you can define your own priors and likelihoods, create new parameters as functions of other parameters...
-
-Though **cobaya** is a general purpose statistical framework, it includes interfaces to cosmological *theory codes* (CAMB_ and CLASS_) and *likelihoods of cosmological experiments* (Planck, Bicep-Keck, SDSS... and more coming soon). Automatic installers are included for all those external modules. You can also use **cobaya** simply as a wrapper for cosmological models and likelihoods, and integrate it in your own sampler/pipeline.
-
-The interfaces to most cosmological likelihoods are agnostic as to which theory code is used to compute the observables, which facilitates comparison between those codes. Those interfaces are also parameter-agnostic, so using your own modified versions of theory codes and likelihoods requires no additional editing of **cobaya**'s source.
-
-
-How to cite us
---------------
-
-If you use **cobaya**, please cite its pre-print, `arXiv:2005.05290 <https://arxiv.org/abs/2005.05290>`_, and its ASCL record, `ascl:1910.019 <https://ascl.net/1910.019>`_.
-
-To appropriately cite the packages (samplers, theory codes, likelihoods) that you have used, simply run the script `cobaya-bib` with your input file(s) as argument(s), and you will get *bibtex* references and a short suggested text snippet for each module mentioned in your input file. You can find a usage example `here <https://cobaya.readthedocs.io/en/latest/cosmo_basic_runs.html#citations>`_.
-
-
-Acknowledgements
-----------------
-
-Thanks to `J. Lesgourgues`_ and `W. Handley`_ for support on interfacing CLASS_ and PolyChord_ respectively.
-
-Thanks too to `G. Cañas Herrera`_, `A. Finke`_, `X. Garrido`_, `S. Heimersheim`_, `L. Hergt`_, `C. Hill`_, `P. Lemos`_, `M.S. Madhavacheril`_, `V. Miranda`_, `T. Morton`_,  `M. Rashkovetskyi`_, `J. Zunz`_ and many others for extensive and somewhat painful testing.
-
-.. _`Jesus Torrado`: https://web.physik.rwth-aachen.de/user/torrado
-.. _`Antony Lewis`: https://cosmologist.info
-.. _CosmoMC: https://cosmologist.info/cosmomc/
-.. _CosmoCoffee: https://cosmocoffee.info/viewforum.php?f=11
-.. _`Monte Python`: https://baudren.github.io/montepython.html
-.. _Camb: https://camb.info/
-.. _Class: https://class-code.net/
-.. _GetDist: https://github.com/cmbant/getdist
-.. _PolyChord: https://github.com/PolyChord/PolyChordLite
-.. _`J. Lesgourgues`: https://www.particle-theory.rwth-aachen.de/cms/Particle-Theory/Das-Institut/Mitarbeiter-TTK/Professoren/~gufe/Lesgourgues-Julien/?lidx=1
-.. _`B. Audren`: https://baudren.github.io/
-.. _`W. Handley`: https://www.kicc.cam.ac.uk/directory/wh260
-.. _`G. Cañas Herrera`: https://gcanasherrera.github.io/pages/about-me.html#about-me
-.. _`A. Finke`: https://cosmology.unige.ch/users/andreas-finke
-.. _`X. Garrido`: https://xgarrido.github.io/
-.. _`S. Heimersheim`: https://www.ast.cam.ac.uk/people/Stefan.Heimersheim
-.. _`L. Hergt`: https://www.kicc.cam.ac.uk/directory/lh561
-.. _`C. Hill`: http://user.astro.columbia.edu/~jch/
-.. _`P. Lemos`: https://pablo-lemos.github.io/
-.. _`M.S. Madhavacheril`: https://msyriac.github.io/
-.. _`V. Miranda`: https://github.com/vivianmiranda
-.. _`T. Morton`: https://github.com/timothydmorton
-.. _`M. Rashkovetskyi`: https://misharash.github.io/
-.. _`J. Zunz`: https://github.com/joezuntz
+emulator:
+   postpone_learning:80,            # number of simulation calls before the emulator is used. Required to get useful PCA and to not train the burn-in
+   learn_every: 20,                 # every N new data points the kernel of the GP is fitted. This is more expensive than just adding a new point to your GP
+   training_size: 1000,             # maximum datasize of the GP. When exceeded, points with the largest loglike will be removed
+   gp_fit_size: 60,                 # data size which is used to compute the GP kernel
+   pca_cache_size: 2000,            # size of the cache to compute the PCA. It scales better with dimensionality than the training size
+   precision: 0.2,                  # precision criterium for the emulator to be used
+   precision_linear:0.0,            # linear precision criterium
+                                    # Total tot_precision = precision + precision_linear * (loglike_max - loglike)   # Thus, we allow data points which are further away from the bestfit point to be more noisy
+   N_validation_states: 10,         # number of validation to estimate the accuracy of the emulator
+   testset_fraction: 0.1,           # fraction of the training set to use for validation
+   debug: True,                     # expensive debug mode which makes a lot of plots
+   pca_update: 1,                   # update PCA every N training steps
+   training_size_burnin: 60,        # number of training points during burnin mode
+   burnin_trigger: 1,               # number of training points after which to switch to normal mode  
+   delta_loglike_cache: 300,        # only data points with a delta_loglike + min_loglike are cached. All other points are removed from the cache     
 
 
 ===================
 
-.. image:: https://raw.githubusercontent.com/CobayaSampler/cobaya/master/img/Sussex_white.svg
-   :alt: University of Sussex
-   :target: https://www.sussex.ac.uk/astronomy/
-   :height: 150px
-   :width: 150px
 
 .. image:: ./img/logo_ttk.png
    :alt: RWTH Aachen
    :target: https://www.particle-theory.rwth-aachen.de/
    :height: 150px
 
-.. image:: https://raw.githubusercontent.com/CobayaSampler/cobaya/master/img/ERC_white.svg
-   :alt: European Research Council
-   :target: https://erc.europa.eu/
-   :height: 150px
-   :width: 150px
-
-.. image:: https://cdn.cosmologist.info/antony/STFC_white.svg
-   :alt: STFC
-   :target: https://stfc.ukri.org/
-   :height: 150px
-   :width: 150px
