@@ -86,9 +86,9 @@ class EmulatorCache(CobayaComponent):
         if self._size() >= self.N:
 
             # check proximity to existing data
-            if self._check_proximity(data[self.theories[0]]['params']):
-                self.log.debug("Data too close to existing data")
-                return False
+            #if self._check_proximity(data[self.theories[0]]['params']):
+            #    self.log.debug("Data too close to existing data")
+            #    return False
 
             # Then check whether the new data is better than the worst data in the cache
             min_loglike = self.dataframes[self.theories[0]]['loglike'].min()

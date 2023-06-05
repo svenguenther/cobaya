@@ -123,7 +123,6 @@ class Emulator(CobayaComponent):
         # Create a cache instance
         self.data_cache = EmulatorCache(
             cache_size = 200 if 'training_size' not in args[1] else args[1]['training_size'],
-            proximity_threshold = 0.01 if 'proximity_threshold' not in args[1] else args[1]['proximity_threshold'],
             delta_loglike_cache = 100 if 'delta_loglike_cache' not in args[1] else args[1]['delta_loglike_cache'],
         )
 
@@ -530,7 +529,6 @@ class Emulator(CobayaComponent):
                             if key in ['tt','te','ee','pp']:
                                 if dim > self.must_provide[theory][element.name][key]:
                                     self.must_provide[theory][element.name][key] = dim
-                                self.must_provide[theory][element.name][key] += dim
                         else:
                             self.must_provide[theory][element.name][key] = dim
                 else:
@@ -543,7 +541,7 @@ class Emulator(CobayaComponent):
                         if key in self.must_provide[theory][element.name].keys():
                             if key in ['tt','te','ee','pp']:
                                 if dim > self.must_provide[theory][element.name][key]:
-                                    self.must_provide[theory][element.name][key] = dim#2508
+                                    self.must_provide[theory][element.name][key] = dim
                             else:
                                 self.must_provide[theory][element.name][key] += dim
                         else:
@@ -773,9 +771,19 @@ class PCA_GPEmulator(CobayaComponent):
         if self.out_dim == 1:
             self.n_pca = None
         elif self.out_dim > 1000:
-            self.n_pca = 10
+            # some handwaving here. This is not really tested TODO: test this
+            if self.name == 'tt':
+                self.n_pca = 10
+            elif self.name == 'te':
+                self.n_pca = 8
+            elif self.name == 'ee':
+                self.n_pca = 6
+            elif self.name == 'pp':
+                self.n_pca = 5
         else:
             self.n_pca = None#self.out_dim
+
+        print(self.name, self.n_pca)
 
         return True
     
@@ -841,15 +849,17 @@ class PCA_GPEmulator(CobayaComponent):
 
         if self.debug and renormalize:
             # plot the data
-            if self.name in ['tt','te','ee','angular_diameter_distance','Hubble']:
+            if self.name in ['tt','te','ee','pp','angular_diameter_distance','Hubble']:
                 for i in range(len(self.data_in[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
                     for j in range(len(self.data_out)):
-                        if self.name in ['tt','te','ee']:
+                        if self.name in ['tt','te','ee','pp']:
                             ax.plot(np.arange(len(self.data_out[0])), np.arange(len(self.data_out[0]))*np.arange(len(self.data_out[0]))*self.data_out[j])
+                        elif self.name in ['pp']:
+                            ax.plot(np.arange(len(self.data_out[0])), (np.arange(len(self.data_out[0]))*np.arange(len(self.data_out[0])))**2*self.data_out[j])
                     ax.set_xlabel('Input')
                     ax.set_ylabel(self.name)
-                    if self.name in ['tt','te','ee']:
+                    if self.name in ['tt','te','ee','pp']:
                         ax.set_xscale('log')
                     fig.savefig('./plots/data_'+self.name+'_'+str(i)+'.png')
             else:
@@ -871,7 +881,7 @@ class PCA_GPEmulator(CobayaComponent):
 
         if self.debug and renormalize:
             # plot the data
-            if self.name in ['tt','te','ee','angular_diameter_distance','Hubble']:
+            if self.name in ['tt','te','ee','pp','angular_diameter_distance','Hubble']:
                 for i in range(len(self.data_in[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
                     for j in range(len(self.data_out)):
