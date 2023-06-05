@@ -33,6 +33,8 @@ from cobaya.tools import deepcopy_where_possible, are_different_params_lists, \
 from cobaya import mpi
 from cobaya.emulator import Emulator
 
+import time
+
 
 @contextmanager
 def timing_on(model: 'Model'):
@@ -404,6 +406,7 @@ class Model(HasLogger):
                 #self.log.info(need_derived)
                 #self.log.info("CURRENT STATE PRE")
                 #self.log.info(component._current_state)
+                start = time.time()
                 if like_index is None:
                     compute_success = component.check_cache_and_compute(
                         params, want_derived=need_derived,
@@ -445,13 +448,15 @@ class Model(HasLogger):
                 #if self.in_validation:
                 #    if like_index is not None:
                 #        component._current_state = None
+
+                dur = time.time() - start
+                if dur > 0.01:
+                    self.log.info("Time spent in %s: %.2g s", component._name, dur)
             
             if self.validation_request == True:
                 self.in_validation = True
             else:
                 self.in_validation = False
-
-        self.log.info("SUCCESS FLAG")
 
         # Here we add new data to the emulator. It is either accepted or rejected.
         if theory_flag == 1:
@@ -463,7 +468,11 @@ class Model(HasLogger):
                     new_state[component._name] =  (like_index, component.current_state)
                 #self.log.info("NEW STATE")
                 #self.log.info(new_state)
+
+                start = time.time()
                 self.emulator.add_state(new_state, loglikes.sum())
+                dur = time.time() - start
+                self.log.info("Time spent adding state: %.2g s", dur)
 
         if make_finite:
             loglikes = np.nan_to_num(loglikes)

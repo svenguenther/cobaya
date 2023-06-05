@@ -627,7 +627,7 @@ class Emulator(CobayaComponent):
             added = self.data_cache.add_data(cs_theory,loglike)
 
         if added:
-            self.log.info('ADDED STATE!!!')
+            #self.log.info('ADDED STATE!!!')
             #self.log.info(state)
             self.write_log_step('added', loglike)
         
@@ -790,11 +790,11 @@ class PCA_GPEmulator(CobayaComponent):
             if self.name == 'tt':
                 self.n_pca = 10
             elif self.name == 'te':
-                self.n_pca = 8
+                self.n_pca = 10
             elif self.name == 'ee':
-                self.n_pca = 6
+                self.n_pca = 8
             elif self.name == 'pp':
-                self.n_pca = 5
+                self.n_pca = 8
         else:
             self.n_pca = None#self.out_dim
 

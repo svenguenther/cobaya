@@ -41,6 +41,8 @@ from cobaya.log import LoggedError, always_stop_exceptions
 from cobaya.tools import get_class_methods
 import copy
 
+import time
+
 
 class Theory(CobayaComponent):
     """Base class theory that can calculate something."""
@@ -266,12 +268,16 @@ class Theory(CobayaComponent):
         if emulator is not None:
             if state is None:
                 if not self.is_validated:
+                    start = time.time()
                     self.log.debug("Try emulating new state")
                     state = {"params": params_values_dict,
                             "dependency_params": dependency_params,
                             "derived": {} if want_derived else None}
                     prev_loglike = sum(loglikes)
                     state, self.is_validated = emulator.evaluate(self._name, state, want_derived, prev_loglike, **params_values_dict)
+
+                    dur = time.time() - start
+                    self.log.info("Emulation took %f seconds" % dur)
 
         if not state:
             self.log.debug("Computing new state")

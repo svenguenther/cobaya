@@ -107,8 +107,8 @@ class EmulatorCache(CobayaComponent):
             min_loglike = self.dataframes[self.theories[0]]['loglike'].min()
             max_loglike = self.dataframes[self.theories[0]]['loglike'].max()
 
-            self.log.info("Min loglike in data cache: {}".format(min_loglike))
-            self.log.info("Max loglike in data cache: {}".format(max_loglike))
+            self.log.debug("Min loglike in data cache: {}".format(min_loglike))
+            self.log.debug("Max loglike in data cache: {}".format(max_loglike))
 
             # Remove datapoints with a loglikelihood lower than the minimum loglikelihood + delta_loglike_cache
             self.dataframe_propose = self.dataframes[self.theories[0]][self.dataframes[self.theories[0]]['loglike'] > max_loglike-self.delta_loglike_cache]
@@ -148,8 +148,8 @@ class EmulatorCache(CobayaComponent):
             min_loglike = self.dataframes[self.theories[0]]['loglike'].min()
             max_loglike = self.dataframes[self.theories[0]]['loglike'].max()
 
-            self.log.info("Min loglike in data cache: {}".format(min_loglike))
-            self.log.info("Max loglike in data cache: {}".format(max_loglike))
+            self.log.debug("Min loglike in data cache: {}".format(min_loglike))
+            self.log.debug("Max loglike in data cache: {}".format(max_loglike))
 
             # Remove datapoints with a loglikelihood lower than the minimum loglikelihood + delta_loglike_cache
             self.dataframe_propose = self.dataframes[self.theories[0]][self.dataframes[self.theories[0]]['loglike'] > max_loglike-self.delta_loglike_cache]
@@ -331,9 +331,9 @@ class PCACache(CobayaComponent):
         min_loglike = self.dataframe['loglike'].min()
         max_loglike = self.dataframe['loglike'].max()
 
-        self.log.info("Min loglike in PCA cache: {}".format(min_loglike))
-        self.log.info("Max loglike in PCA cache: {}".format(max_loglike))
-        self.log.info("Size of PCA cache: {}".format(self._size()))
+        self.log.debug("Min loglike in PCA cache: {}".format(min_loglike))
+        self.log.debug("Max loglike in PCA cache: {}".format(max_loglike))
+        self.log.debug("Size of PCA cache: {}".format(self._size()))
 
         # Remove datapoints with a loglikelihood lower than the minimum loglikelihood + delta_loglike_cache
         self.dataframe_propose = self.dataframe[self.dataframe['loglike'] > max_loglike-self.delta_loglike_cache]
