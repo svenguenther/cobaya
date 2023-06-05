@@ -20,6 +20,15 @@ import time
 import os
 import gc
 
+import matplotlib
+matplotlib.use("agg")
+import matplotlib.pyplot as plt
+import numpy as np
+
+from matplotlib import rc
+rc('font', **{'family': 'serif', 'serif': ['Computer Modern'], 'size': 15})
+rc('text', usetex=True)
+
 class quantity_GP:
     name: str       # name of this GP
     dim: int        # dimensionality of this problem
@@ -520,8 +529,7 @@ class Emulator(CobayaComponent):
                         if key in self.must_provide[theory][element.name].keys():
                             if key in ['tt','te','ee','pp']:
                                 if dim > self.must_provide[theory][element.name][key]:
-                                    self.must_provide[theory][element.name][key] = 2508#dim #pp is only required to 2500 but cobaya requires 2508
-                            else:
+                                    self.must_provide[theory][element.name][key] = dim
                                 self.must_provide[theory][element.name][key] += dim
                         else:
                             self.must_provide[theory][element.name][key] = dim
@@ -535,13 +543,25 @@ class Emulator(CobayaComponent):
                         if key in self.must_provide[theory][element.name].keys():
                             if key in ['tt','te','ee','pp']:
                                 if dim > self.must_provide[theory][element.name][key]:
-                                    self.must_provide[theory][element.name][key] = 2508
+                                    self.must_provide[theory][element.name][key] = dim#2508
                             else:
                                 self.must_provide[theory][element.name][key] += dim
                         else:
                             self.must_provide[theory][element.name][key] = dim
-        self.must_provide['classy']['Cl']['pp'] = 2508
-        return False
+
+        # EBS work in the way that they calc all cls to the highest demanded ell
+        if 'Cl' in self.must_provide[theory].keys():
+            max_ell = 0
+            for key in self.must_provide[theory]['Cl'].keys():
+                if key in ['tt','te','ee','pp']:
+                    if self.must_provide[theory]['Cl'][key] > max_ell:
+                        max_ell = self.must_provide[theory]['Cl'][key]
+            
+            for key in self.must_provide[theory]['Cl'].keys():
+                if key in ['tt','te','ee','pp']:
+                    self.must_provide[theory]['Cl'][key] = max_ell
+
+        return True
 
     def get_must_provide(self):
         return self.must_provide
@@ -1311,24 +1331,23 @@ class PCA_GPEmulator(CobayaComponent):
                     fig,ax = plt.subplots(3,sharex=True,figsize=(10,10))
                     ax[2].set_xlabel('ell')
                     ax[0].set_ylabel(self.name)
-                    ax[0].set_title(self.name + ' ' + str(ind))
                     ax[0].plot(np.arange(self.out_dim),np.arange(self.out_dim)*np.arange(self.out_dim)*original_data[ind], label='true')
                     ax[0].plot(np.arange(self.out_dim),np.arange(self.out_dim)*np.arange(self.out_dim)*test_data[ind], label='predicted')
                     ax[0].fill_between(np.arange(self.out_dim), np.arange(self.out_dim)*np.arange(self.out_dim)*(test_data[ind]-test_unc[ind]), np.arange(self.out_dim)*np.arange(self.out_dim)*(test_data[ind]+test_unc[ind]), alpha=0.5, label='SAMPLING uncertainty')
                     ax[0].fill_between(np.arange(self.out_dim), np.arange(self.out_dim)*np.arange(self.out_dim)*(test_data[ind]-self._pca_residual_std), np.arange(self.out_dim)*np.arange(self.out_dim)*(test_data[ind]+self._pca_residual_std),color='orange', alpha=0.5, label='PCA uncertainty')
                     ax[0].grid(True)
                     ax[0].legend()
-                    ax[0].set_ylabel('l*(l+1)*C_l')
+                    ax[0].set_ylabel(r'$D^{TT}_{\ell}$')
                     ax[1].plot(np.arange(self.out_dim),np.arange(self.out_dim)*np.arange(self.out_dim)*(original_data[ind]-test_data[ind]), label='difference')
                     ax[1].fill_between(np.arange(self.out_dim), np.arange(self.out_dim)*np.arange(self.out_dim)*(-test_data[ind]-test_unc[ind]+original_data[ind]), np.arange(self.out_dim)*np.arange(self.out_dim)*(-test_data[ind]+test_unc[ind]+original_data[ind]), alpha=0.5, label='SAMPLING uncertainty')
                     
                     ax[1].fill_between(np.arange(self.out_dim), np.arange(self.out_dim)*np.arange(self.out_dim)*(-test_data[ind]-self._pca_residual_std+original_data[ind]), np.arange(self.out_dim)*np.arange(self.out_dim)*(-test_data[ind]+self._pca_residual_std+original_data[ind]),color='orange' ,alpha=0.5, label='PCA uncertainty')
                     ax[1].grid(True)
                     ax[1].legend()
-                    ax[1].set_ylabel('l*(l+1)*delta C_l')
+                    ax[1].set_ylabel(r'$\triangle D^{TT}_{\ell}$')
                     cv = original_data[ind]/np.sqrt(np.arange(self.out_dim)+0.5)
 
-                    ax[2].set_ylabel('delta C_l/cosmic variance')
+                    ax[2].set_ylabel(r'$\triangle D^{TT}_{\ell}/CV$')
                     ax[2].plot(np.arange(self.out_dim),(original_data[ind]-test_data[ind])/cv, label='difference')
                     ax[2].fill_between(np.arange(self.out_dim), (-test_data[ind]-test_unc[ind]+original_data[ind])/cv, (-test_data[ind]+test_unc[ind]+original_data[ind])/cv, alpha=0.5, label='SAMPLING uncertainty')
                     
