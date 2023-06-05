@@ -80,6 +80,8 @@ class Emulator(CobayaComponent):
 
         self._max_loglike = -np.inf # This is the minimal loglike value we witnessed so far
 
+        self.min_cache_size = 30 if 'min_cache_size' not in args[1] else args[1]['min_cache_size']
+
 
         self.N_validation_states = 5 if 'N_validation_states' not in args[1] else args[1]['N_validation_states']
 
@@ -102,12 +104,12 @@ class Emulator(CobayaComponent):
         self.counter_emulator_not_used = 0
 
         # During burnin phase we use a reduced emulator size
-        self._in_burnin_phase = True
         self._last_loglike_update = 0
-        self._N_burnin = 40 if 'training_size_burnin' not in args[1] else args[1]['training_size_burnin']
-        self._burnin_trigger = 50 if 'burnin_trigger' not in args[1] else args[1]['burnin_trigger']
 
         self._gp_fit_size = 100 if 'gp_fit_size' not in args[1] else args[1]['gp_fit_size']
+
+        self._gp_initial_minimization_states = 40 if 'gp_initial_minimization_states' not in args[1] else args[1]['gp_initial_minimization_states']
+        self._gp_minimization_states = 5 if 'gp_minimization_states' not in args[1] else args[1]['gp_minimization_states']
 
         self.last_evaluated_state = {}
 
@@ -124,12 +126,14 @@ class Emulator(CobayaComponent):
         self.data_cache = EmulatorCache(
             cache_size = 200 if 'training_size' not in args[1] else args[1]['training_size'],
             delta_loglike_cache = 100 if 'delta_loglike_cache' not in args[1] else args[1]['delta_loglike_cache'],
+            min_cache_size = self.min_cache_size,
         )
 
         # Create a cache instance for the PCA cache
         self.pca_cache = PCACache(
             cache_size = 200 if 'pca_cache_size' not in args[1] else args[1]['pca_cache_size'],
             delta_loglike_cache = 100 if 'delta_loglike_cache' not in args[1] else args[1]['delta_loglike_cache'],
+            min_cache_size = self.min_cache_size,
         )
 
         self.parameter_dimension = {}
@@ -196,7 +200,9 @@ class Emulator(CobayaComponent):
                                                                   pca_cache=self.pca_cache, 
                                                                   debug=self.debug, 
                                                                   _pca_update=self._pca_update,
-                                                                  _gp_fit_size=self._gp_fit_size)
+                                                                  _gp_fit_size=self._gp_fit_size,
+                                                                  gp_initial_minimization_states=self._gp_initial_minimization_states,
+                                                                  gp_minimization_states=self._gp_minimization_states)
                 elif type(value) == dict:
                     if len(value) == 1:
                         self.predictors[theory][key] = PCA_GPEmulator(name=str(key),
@@ -206,7 +212,9 @@ class Emulator(CobayaComponent):
                                                                       pca_cache=self.pca_cache, 
                                                                       debug=self.debug, 
                                                                       _pca_update=self._pca_update,
-                                                                      _gp_fit_size=self._gp_fit_size)
+                                                                      _gp_fit_size=self._gp_fit_size,
+                                                                      gp_initial_minimization_states=self._gp_initial_minimization_states,
+                                                                      gp_minimization_states=self._gp_minimization_states)
                     else:
                         for k,v in value.items():   # TODO: super ugly, but works for now. Fix this
                             if key == 'Cl': 
@@ -217,7 +225,9 @@ class Emulator(CobayaComponent):
                                                                             pca_cache=self.pca_cache, 
                                                                             debug=self.debug,
                                                                             _pca_update=self._pca_update,
-                                                                            _gp_fit_size=self._gp_fit_size)              
+                                                                            _gp_fit_size=self._gp_fit_size,
+                                                                            gp_initial_minimization_states=self._gp_initial_minimization_states,
+                                                                            gp_minimization_states=self._gp_minimization_states)              
                             else:
                                 self.predictors[theory][k] = PCA_GPEmulator(name=str(k),
                                                                             out_dim=v,
@@ -226,7 +236,9 @@ class Emulator(CobayaComponent):
                                                                             pca_cache=self.pca_cache, 
                                                                             debug=self.debug, 
                                                                             _pca_update=self._pca_update,
-                                                                            _gp_fit_size=self._gp_fit_size)              
+                                                                            _gp_fit_size=self._gp_fit_size,
+                                                                            gp_initial_minimization_states=self._gp_initial_minimization_states,
+                                                                            gp_minimization_states=self._gp_minimization_states)              
                 else:
                     self.log.error("Unknown type of prediction: %s" % type(value))
             
@@ -238,7 +250,9 @@ class Emulator(CobayaComponent):
                                                                 pca_cache=self.pca_cache, 
                                                                 debug=self.debug, 
                                                                 _pca_update=self._pca_update,
-                                                                _gp_fit_size=self._gp_fit_size)
+                                                                _gp_fit_size=self._gp_fit_size,
+                                                                gp_initial_minimization_states=self._gp_initial_minimization_states,
+                                                                gp_minimization_states=self._gp_minimization_states)
 
         self.is_initialized = True
         return True
@@ -307,13 +321,6 @@ class Emulator(CobayaComponent):
         if self.timer:
             self.timer.start()
 
-        # decide if we are still in burnin phase
-        if ((self.counter_emulator_not_used+self.counter_emulator_used)>self.postpone_learning+self._burnin_trigger):
-            if (self.evalution_counter - self._last_loglike_update) > self._burnin_trigger:
-                if self._in_burnin_phase:
-                    self._in_burnin_phase = False
-                    self.write_log_step('burnin_end')
-
         #if (self.evalution_counter%100 == 0):
         if not self.in_validation:
             self.log.info("Emulator used %d; not used %d" % (self.counter_emulator_used,self.counter_emulator_not_used))
@@ -337,14 +344,22 @@ class Emulator(CobayaComponent):
 
         # Do some PCA validation TODO
 
-
-        # Should we train the emulator? Then train I guess 
-        if ((self.data_cache._newly_added_points+1) % self.learn_every == 0) and (self.counter_emulator_not_used>self.postpone_learning):
+        # should we train the emulatro?
+        if self.data_cache.is_trainable() and (self.counter_emulator_not_used>self.postpone_learning) and ((self.data_cache._newly_added_points+1) % self.learn_every == 0):
             self.log.info("_train_emulator")
             if self.in_validation == False:
                 self.write_log_step('train')
                 self._load_data_to_GP(renormalize=True)
                 self._train_emulator()
+
+        # OLD TODO: remove this
+        # Should we train the emulator? Then train I guess 
+        #if ((self.data_cache._newly_added_points+1) % self.learn_every == 0) and (self.counter_emulator_not_used>self.postpone_learning):
+        #    self.log.info("_train_emulator")
+        #    if self.in_validation == False:
+        #        self.write_log_step('train')
+        #        self._load_data_to_GP(renormalize=True)
+        #        self._train_emulator()
 
 
         # If we are not ready yet, we cannot calculate anything
@@ -488,10 +503,7 @@ class Emulator(CobayaComponent):
         for theory in self.theories:
             for name, GP in self.predictors[theory].items():
                 # Get the data from the cache
-                if self._in_burnin_phase:
-                    N = self._N_burnin
-                else:
-                    N = self.data_cache._size()
+                N = self.data_cache._size()
                 data = self.data_cache.get_data(theory, keys = ['params',name,'loglike'], N=N)
 
                 # Load the data into the GP
@@ -699,6 +711,9 @@ class PCA_GPEmulator(CobayaComponent):
         self.out_dim = kwargs['out_dim']
         self.in_dim = kwargs['in_dim']
 
+        self._gp_initial_minimization_states = 40 if 'gp_initial_minimization_states' not in kwargs else kwargs['gp_initial_minimization_states']
+        self._gp_minimization_states = 5 if 'gp_minimization_states' not in kwargs else kwargs['gp_minimization_states']
+
         self.debug= kwargs['debug']
 
         self.testset_fraction = kwargs['testset_fraction']
@@ -758,8 +773,8 @@ class PCA_GPEmulator(CobayaComponent):
 
         # precision parameters regarding the GP
         self._theta_boundary_scale = 3.0 # how far to go in each direction when searching for the best theta
-        self._N_restarts_initial = 40 # how many random restarts to do for the initial theta
-        self._N_restarts = 5 # how many random restarts to do for the theta after the initial one
+        self._N_restarts_initial = self._gp_initial_minimization_states # how many random restarts to do for the initial theta
+        self._N_restarts = self._gp_minimization_states # how many random restarts to do for the theta after the initial one
 
         self._use_reduced_input = False # whether to use the reduced input for the GP
 
@@ -1150,8 +1165,11 @@ class PCA_GPEmulator(CobayaComponent):
             self.data_out_fit = self.data_out
             self._data_out_pca_fit = self._data_out_pca
 
-
-        self.train_indices, self.test_indices = train_test_split(np.arange(len(self.data_in_fit)), test_size=self.testset_fraction, random_state=42)
+        if  self.testset_fraction > 0.0:
+            self.train_indices, self.test_indices = train_test_split(np.arange(len(self.data_in_fit)), test_size=self.testset_fraction, random_state=42)
+        else:
+            self.train_indices = np.arange(len(self.data_in_fit))
+            self.test_indices = np.arange(len(self.data_in_fit))
 
         self.log.info("Test set size: %d" % len(self.test_indices))
         self.log.info("Train set size: %d" % len(self.train_indices))
@@ -1341,17 +1359,27 @@ class PCA_GPEmulator(CobayaComponent):
                     fig,ax = plt.subplots(3,sharex=True,figsize=(10,10))
                     ax[2].set_xlabel('ell')
                     ax[0].set_ylabel(self.name)
-                    ax[0].plot(np.arange(self.out_dim),np.arange(self.out_dim)*np.arange(self.out_dim)*original_data[ind], label='true')
-                    ax[0].plot(np.arange(self.out_dim),np.arange(self.out_dim)*np.arange(self.out_dim)*test_data[ind], label='predicted')
-                    ax[0].fill_between(np.arange(self.out_dim), np.arange(self.out_dim)*np.arange(self.out_dim)*(test_data[ind]-test_unc[ind]), np.arange(self.out_dim)*np.arange(self.out_dim)*(test_data[ind]+test_unc[ind]), alpha=0.5, label='SAMPLING uncertainty')
-                    ax[0].fill_between(np.arange(self.out_dim), np.arange(self.out_dim)*np.arange(self.out_dim)*(test_data[ind]-self._pca_residual_std), np.arange(self.out_dim)*np.arange(self.out_dim)*(test_data[ind]+self._pca_residual_std),color='orange', alpha=0.5, label='PCA uncertainty')
+                    if self.name in ['pp']:
+                        ax[0].plot(np.arange(self.out_dim),(np.arange(self.out_dim)*np.arange(self.out_dim))**2*original_data[ind], label='true')
+                        ax[0].plot(np.arange(self.out_dim),(np.arange(self.out_dim)*np.arange(self.out_dim))**2*test_data[ind], label='predicted')
+                        ax[0].fill_between(np.arange(self.out_dim), (np.arange(self.out_dim)*np.arange(self.out_dim))**2*(test_data[ind]-test_unc[ind]), (np.arange(self.out_dim)*np.arange(self.out_dim))**2*(test_data[ind]+test_unc[ind]), alpha=0.5, label='SAMPLING uncertainty')
+                        ax[0].fill_between(np.arange(self.out_dim), (np.arange(self.out_dim)*np.arange(self.out_dim))**2*(test_data[ind]-self._pca_residual_std), (np.arange(self.out_dim)*np.arange(self.out_dim))**2*(test_data[ind]+self._pca_residual_std),color='orange', alpha=0.5, label='PCA uncertainty')
+                    else:
+                        ax[0].plot(np.arange(self.out_dim),np.arange(self.out_dim)*np.arange(self.out_dim)*original_data[ind], label='true')
+                        ax[0].plot(np.arange(self.out_dim),np.arange(self.out_dim)*np.arange(self.out_dim)*test_data[ind], label='predicted')
+                        ax[0].fill_between(np.arange(self.out_dim), np.arange(self.out_dim)*np.arange(self.out_dim)*(test_data[ind]-test_unc[ind]), np.arange(self.out_dim)*np.arange(self.out_dim)*(test_data[ind]+test_unc[ind]), alpha=0.5, label='SAMPLING uncertainty')
+                        ax[0].fill_between(np.arange(self.out_dim), np.arange(self.out_dim)*np.arange(self.out_dim)*(test_data[ind]-self._pca_residual_std), np.arange(self.out_dim)*np.arange(self.out_dim)*(test_data[ind]+self._pca_residual_std),color='orange', alpha=0.5, label='PCA uncertainty')
                     ax[0].grid(True)
                     ax[0].legend()
                     ax[0].set_ylabel(r'$D^{TT}_{\ell}$')
-                    ax[1].plot(np.arange(self.out_dim),np.arange(self.out_dim)*np.arange(self.out_dim)*(original_data[ind]-test_data[ind]), label='difference')
-                    ax[1].fill_between(np.arange(self.out_dim), np.arange(self.out_dim)*np.arange(self.out_dim)*(-test_data[ind]-test_unc[ind]+original_data[ind]), np.arange(self.out_dim)*np.arange(self.out_dim)*(-test_data[ind]+test_unc[ind]+original_data[ind]), alpha=0.5, label='SAMPLING uncertainty')
-                    
-                    ax[1].fill_between(np.arange(self.out_dim), np.arange(self.out_dim)*np.arange(self.out_dim)*(-test_data[ind]-self._pca_residual_std+original_data[ind]), np.arange(self.out_dim)*np.arange(self.out_dim)*(-test_data[ind]+self._pca_residual_std+original_data[ind]),color='orange' ,alpha=0.5, label='PCA uncertainty')
+                    if self.name in ['pp']:
+                        ax[1].plot(np.arange(self.out_dim),(np.arange(self.out_dim)*np.arange(self.out_dim))**2*(original_data[ind]-test_data[ind]), label='difference')
+                        ax[1].fill_between(np.arange(self.out_dim), (np.arange(self.out_dim)*np.arange(self.out_dim))**2*(-test_data[ind]-test_unc[ind]+original_data[ind]), (np.arange(self.out_dim)*np.arange(self.out_dim))**2*(-test_data[ind]+test_unc[ind]+original_data[ind]), alpha=0.5, label='SAMPLING uncertainty')
+                        ax[1].fill_between(np.arange(self.out_dim), (np.arange(self.out_dim)*np.arange(self.out_dim))**2*(-test_data[ind]-self._pca_residual_std+original_data[ind]), (np.arange(self.out_dim)*np.arange(self.out_dim))**2*(-test_data[ind]+self._pca_residual_std+original_data[ind]),color='orange' ,alpha=0.5, label='PCA uncertainty')
+                    else:
+                        ax[1].plot(np.arange(self.out_dim),np.arange(self.out_dim)*np.arange(self.out_dim)*(original_data[ind]-test_data[ind]), label='difference')
+                        ax[1].fill_between(np.arange(self.out_dim), np.arange(self.out_dim)*np.arange(self.out_dim)*(-test_data[ind]-test_unc[ind]+original_data[ind]), np.arange(self.out_dim)*np.arange(self.out_dim)*(-test_data[ind]+test_unc[ind]+original_data[ind]), alpha=0.5, label='SAMPLING uncertainty')
+                        ax[1].fill_between(np.arange(self.out_dim), np.arange(self.out_dim)*np.arange(self.out_dim)*(-test_data[ind]-self._pca_residual_std+original_data[ind]), np.arange(self.out_dim)*np.arange(self.out_dim)*(-test_data[ind]+self._pca_residual_std+original_data[ind]),color='orange' ,alpha=0.5, label='PCA uncertainty')
                     ax[1].grid(True)
                     ax[1].legend()
                     ax[1].set_ylabel(r'$\triangle D^{TT}_{\ell}$')

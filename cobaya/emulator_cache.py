@@ -30,6 +30,10 @@ class EmulatorCache(CobayaComponent):
         self.initialized = False
         self._proximity_threshold = 0.2 if 'proximity_threshold' not in kwargs else kwargs['proximity_threshold']
         self.delta_loglike_cache = 300 if 'delta_loglike_cache' not in kwargs else kwargs['delta_loglike_cache']
+
+        self.min_cache_size = 30 if 'min_cache_size' not in kwargs else kwargs['min_cache_size']
+
+
         self.theories = None
 
         self.dataframes = {} # a dict between theory and a dataframe
@@ -39,6 +43,15 @@ class EmulatorCache(CobayaComponent):
         self._N_dist_update = 50 
         self._N_dist_update_counter = 0
         self.neighbour_dist_mean = None
+
+    def is_trainable(self):
+        min_loglike = self.dataframes[self.theories[0]]['loglike'].min()
+        max_loglike = self.dataframes[self.theories[0]]['loglike'].max()
+
+        if max_loglike - min_loglike < self.delta_loglike_cache:
+            return True
+        else:
+            return False
 
     def initialize(self,state,loglike):
         
@@ -100,7 +113,7 @@ class EmulatorCache(CobayaComponent):
             # Remove datapoints with a loglikelihood lower than the minimum loglikelihood + delta_loglike_cache
             self.dataframe_propose = self.dataframes[self.theories[0]][self.dataframes[self.theories[0]]['loglike'] > max_loglike-self.delta_loglike_cache]
             theory = list(self.dataframes.keys())[0]
-            if self.dataframe_propose.shape[0]/len(self.theories) > 30: # Ensure that the cache is sufficiently full.
+            if self.dataframe_propose.shape[0]/len(self.theories) > self.min_cache_size: # Ensure that the cache is sufficiently full.
                 self.dataframes[theory] = self.dataframe_propose
 
             self.log.debug("Min loglike in cache: {}".format(min_loglike))
@@ -141,7 +154,7 @@ class EmulatorCache(CobayaComponent):
             # Remove datapoints with a loglikelihood lower than the minimum loglikelihood + delta_loglike_cache
             self.dataframe_propose = self.dataframes[self.theories[0]][self.dataframes[self.theories[0]]['loglike'] > max_loglike-self.delta_loglike_cache]
             theory = list(self.dataframes.keys())[0]
-            if self.dataframe_propose.shape[0]/len(self.theories) > 30: # Ensure that the cache is sufficiently full.
+            if self.dataframe_propose.shape[0]/len(self.theories) > self.min_cache_size: # Ensure that the cache is sufficiently full.
                 self.dataframes[theory] = self.dataframe_propose
 
 
@@ -257,6 +270,7 @@ class PCACache(CobayaComponent):
 
         self.theories = None
         self.delta_loglike_cache = 300 if 'delta_loglike_cache' not in kwargs else kwargs['delta_loglike_cache']
+        self.min_cache_size = 30 if 'min_cache_size' not in kwargs else kwargs['min_cache_size']
 
         self.dataframe = None # a dict between theory and a dataframe
 
@@ -324,7 +338,7 @@ class PCACache(CobayaComponent):
         # Remove datapoints with a loglikelihood lower than the minimum loglikelihood + delta_loglike_cache
         self.dataframe_propose = self.dataframe[self.dataframe['loglike'] > max_loglike-self.delta_loglike_cache]
         theory = list(self.dataframe.keys())[0]
-        if self.dataframe_propose[theory].shape[0]/len(self.theories) > 30: # Ensure that the cache is sufficiently full.
+        if self.dataframe_propose[theory].shape[0]/len(self.theories) > self.min_cache_size: # Ensure that the cache is sufficiently full.
             self.dataframe = self.dataframe_propose
 
         #self.log.info(self.dataframe)

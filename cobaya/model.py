@@ -383,7 +383,7 @@ class Model(HasLogger):
         outpar_dict: ParamValuesDict = {}
         compute_success = True
         self.provider.set_current_input_params(input_params)
-        self.log.info("Got input parameters: %r", input_params)
+        # self.log.info("Got input parameters: %r", input_params)
         loglikes = np.zeros(len(self.likelihood))
         need_derived = self.requires_derived or return_derived or return_output_params
         self.in_validation = False
