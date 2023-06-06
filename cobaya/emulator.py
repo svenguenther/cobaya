@@ -1053,11 +1053,11 @@ class PCA_GPEmulator(CobayaComponent):
                 if self.n_pca is not None:
                     for i in range(self.n_pca):
                         for j in range(len(thetas[i])):
-                            bounds[i][j] = [np.exp(thetas[i][j]),np.exp(thetas[i][j])]
+                            bounds[i][j] = [np.exp(thetas[i][j])-0.000001,np.exp(thetas[i][j])+0.0000001]
                 else:
                     for i in range(self.out_dim):
                         for j in range(len(thetas[i])):
-                            bounds[i][j] = [np.exp(thetas[i][j]),np.exp(thetas[i][j])]
+                            bounds[i][j] = [np.exp(thetas[i][j])-0.0000001,np.exp(thetas[i][j])+0.0000001]
                     
 
             if self.n_pca is not None:

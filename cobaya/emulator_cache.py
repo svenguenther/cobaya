@@ -304,7 +304,7 @@ class PCACache(CobayaComponent):
         if self.initialized:
             data = {}
             for key in keys:
-                data[key] = np.array([np.array(_) for _ in self.dataframe[key].values])
+                data[key] = np.array([np.array(_) for _ in self.dataframe[key].values],dtype=object)
             return data
         else:
             self.log.error("Cache is empty. Training not possible")
