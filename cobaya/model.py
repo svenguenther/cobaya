@@ -105,9 +105,9 @@ class LogPosterior:
 
     def _logpost(self):
         """Computes logpost from prior and likelihood product."""
-        print("Computing logpost = logprior + loglike")
-        print(self.logprior)
-        print(self.loglike)
+        #print("Computing logpost = logprior + loglike")
+        #print(self.logprior)
+        #print(self.loglike)
         
         return self.logprior + self.loglike
 
@@ -451,7 +451,7 @@ class Model(HasLogger):
 
                 dur = time.time() - start
                 if dur > 0.01:
-                    self.log.info("Time spent in %s: %.2g s", component._name, dur)
+                    self.log.debug("Time spent in %s: %.2g s", component._name, dur)
             
             if self.validation_request == True:
                 self.in_validation = True
@@ -472,7 +472,7 @@ class Model(HasLogger):
                 start = time.time()
                 self.emulator.add_state(new_state, loglikes.sum())
                 dur = time.time() - start
-                self.log.info("Time spent adding state: %.2g s", dur)
+                self.log.debug("Time spent adding state: %.2g s", dur)
 
         if make_finite:
             loglikes = np.nan_to_num(loglikes)

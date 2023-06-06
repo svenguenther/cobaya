@@ -84,10 +84,10 @@ class EmulatorCache(CobayaComponent):
             for key in keys:
                 data[key] = np.array([np.array(_) for _ in self.dataframes[theory].sort_values(by=['loglike']).tail(N)[key].values])
                 if key == 'tt':
-                    self.log.info('tt')
+                    self.log.debug('tt')
                     ll = [_[0] for _ in data[key]]
-                    self.log.info(len(ll))
-                    self.log.info(ll)
+                    self.log.debug(len(ll))
+                    self.log.debug(ll)
             return data
         else:
             self.log.error("Cache is empty. Training not possible")
@@ -194,7 +194,7 @@ class EmulatorCache(CobayaComponent):
 
         # calculate the distance matrix
         if self._N_dist_update_counter%self._N_dist_update == 0:
-            self.log.info("Calculating distance matrix")
+            self.log.debug("Calculating distance matrix")
             _data_in_dist = np.zeros((params.shape[0],params.shape[0]))
             for i in range(params.shape[0]):
                 for j in range(params.shape[0]):
@@ -212,9 +212,9 @@ class EmulatorCache(CobayaComponent):
 
         # get the minimum distance
         min_dist = np.min(dist)
-        self.log.info("Minimum distance: {}".format(min_dist))
-        self.log.info("Threshold distance: {}".format(self._proximity_threshold*neighbour_dist_mean))
-        self.log.info("neighbour_dist_mean: {}".format(neighbour_dist_mean))
+        self.log.debug("Minimum distance: {}".format(min_dist))
+        self.log.debug("Threshold distance: {}".format(self._proximity_threshold*neighbour_dist_mean))
+        self.log.debug("neighbour_dist_mean: {}".format(neighbour_dist_mean))
 
         self._N_dist_update_counter += 1
 
@@ -301,6 +301,8 @@ class PCACache(CobayaComponent):
     
     # This function returns the data from the cache
     def get_data(self, keys):
+
+        print(self.dataframe.head())
         if self.initialized:
             data = {}
             for key in keys:
@@ -349,7 +351,7 @@ class PCACache(CobayaComponent):
                 # update the loglikelihood
                 for theory in state.keys():
                     if self.dataframe.loc[(my_hash, theory),'loglike'] < loglike:
-                        self.log.info("Update loglike")
+                        self.log.debug("Update loglike")
                         self.dataframe.loc[(my_hash, theory),'loglike'] = loglike
                 return False
             else:

@@ -277,7 +277,7 @@ class Theory(CobayaComponent):
                     state, self.is_validated = emulator.evaluate(self._name, state, want_derived, prev_loglike, **params_values_dict)
 
                     dur = time.time() - start
-                    self.log.info("Emulation took %f seconds" % dur)
+                    self.log.debug("Emulation took %f seconds" % dur)
 
         if not state:
             self.log.debug("Computing new state")
@@ -290,10 +290,10 @@ class Theory(CobayaComponent):
                 try:
                     if emulator.in_validation:
                         self.is_validated = False
-                        self.log.info("Validation mode CLASS" )
+                        self.log.debug("Validation mode CLASS" )
                     else:
                         self.is_validated = True
-                        self.log.info("Ground mode CLASS" )
+                        self.log.debug("Ground mode CLASS" )
                 except:
                     self.is_validated = True
                 if self.calculate(state, want_derived, **params_values_dict) is False:

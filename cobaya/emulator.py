@@ -258,7 +258,7 @@ class Emulator(CobayaComponent):
         return True
 
     def _create_validation_states(self, theory, state):
-        self.log.info("Creating validation states")
+        self.log.debug("Creating validation states")
 
         # No need for validation if not requested
         if self.N_validation_states == 0:
@@ -346,7 +346,7 @@ class Emulator(CobayaComponent):
 
         # should we train the emulatro?
         if self.data_cache.is_trainable() and (self.counter_emulator_not_used>self.postpone_learning) and ((self.data_cache._newly_added_points+1) % self.learn_every == 0):
-            self.log.info("_train_emulator")
+            self.log.debug("_train_emulator")
             if self.in_validation == False:
                 self.write_log_step('train')
                 self._load_data_to_GP(renormalize=True)
@@ -798,8 +798,6 @@ class PCA_GPEmulator(CobayaComponent):
         else:
             self.n_pca = None#self.out_dim
 
-        print(self.name, self.n_pca)
-
         return True
     
     def load_training_data(self, data_in, data_out, loglike, renormalize=True):
@@ -1066,7 +1064,7 @@ class PCA_GPEmulator(CobayaComponent):
                 self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1:]),length_scale_bounds=tuple(bounds[i][1:])) for i in range(self.out_dim)]
         
 
-        self.log.info('kernels done')
+        self.log.debug('kernels done')
         
         return True
 
@@ -1075,13 +1073,11 @@ class PCA_GPEmulator(CobayaComponent):
         if self.timer:
             self.timer.start()
 
-        self.log.info("Creating GP")
+        self.log.debug("Creating GP")
 
         # create GP if it is not already created
         if self._gps is None:
             if self.n_pca is not None:
-                self.log.info('self.n_pca')
-                self.log.info(self.n_pca)
                 self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts_initial, alpha=1.e-8) for i in range(self.n_pca)]
 
                 if self.debug:
@@ -1171,12 +1167,12 @@ class PCA_GPEmulator(CobayaComponent):
             self.train_indices = np.arange(len(self.data_in_fit))
             self.test_indices = np.arange(len(self.data_in_fit))
 
-        self.log.info("Test set size: %d" % len(self.test_indices))
-        self.log.info("Train set size: %d" % len(self.train_indices))
+        self.log.debug("Test set size: %d" % len(self.test_indices))
+        self.log.debug("Train set size: %d" % len(self.train_indices))
 
 
         # Train the GP
-        self.log.info("Training GP")
+        self.log.debug("Training GP")
         start = time.time()
         for i,GP in enumerate(self._gps):
             #self.log.info("Training GP %d" % i)
@@ -1211,10 +1207,10 @@ class PCA_GPEmulator(CobayaComponent):
                     self.log.debug("GP score test: %f" % score_test)
         
 
-            self.log.info('post thetas')
-            self.log.info(GP.kernel_.theta)
+            self.log.debug('post thetas')
+            self.log.debug(GP.kernel_.theta)
 
-        self.log.info("Time to fit kernel: %f" % (time.time() - start))
+        self.log.debug("Time to fit kernel: %f" % (time.time() - start))
 
 
         # Once the kernel are fitted we can calculate the full GP including the additional dataset.
@@ -1420,7 +1416,7 @@ class PCA_GPEmulator(CobayaComponent):
         start = time.time()
         # create kernels again with fixed values
         self._create_kernel(0.0, update_mask=False)
-        self.log.info("Training GP on additional data")
+        self.log.debug("Training GP on additional data")
 
         if self.n_pca is not None:
             self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=0, alpha=1.e-8) for i in range(self.n_pca)]
@@ -1434,7 +1430,7 @@ class PCA_GPEmulator(CobayaComponent):
             else:
                 GP.fit(self.data_in[:,self._in_mask_indices[i]], self.data_out[:,i])
 
-        self.log.info("Time to fit full GP: %f" % (time.time() - start))
+        self.log.debug("Time to fit full GP: %f" % (time.time() - start))
 
         return True
     
