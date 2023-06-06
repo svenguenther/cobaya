@@ -116,9 +116,9 @@ class Emulator(CobayaComponent):
         self.set_timing_on(True)
 
         # check if log file exists and delete it
-        # if self.debug:
-        if os.path.exists('log_file.txt'):
-            os.remove('log_file.txt')
+        if self.debug:
+            if os.path.exists('log_file.txt'):
+                os.remove('log_file.txt')
 
 
 
