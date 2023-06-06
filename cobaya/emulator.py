@@ -401,7 +401,7 @@ class Emulator(CobayaComponent):
                             else:
                                 if abs(loglike-self.validation_loglikes[i-1]) > precision:
                                     self.validation_loglikes[i] = loglike
-                                    self.log.error("Validation loglikes are not consistent!")                            
+                                    self.log.debug("Validation loglikes are not consistent!")                            
                                     self.in_validation = False
                                     self.counter_emulator_not_used += 1
                                     self.write_log_step('not_used')
@@ -410,7 +410,7 @@ class Emulator(CobayaComponent):
                         else:
                             if abs(loglike-self.validation_loglikes[i-1]) > precision:
                                 self.validation_loglikes[i] = loglike
-                                self.log.error("Validation loglikes are not consistent!")                            
+                                self.log.debug("Validation loglikes are not consistent!")                            
                                 self.in_validation = False
                                 self.counter_emulator_not_used += 1
                                 self.write_log_step('not_used')
@@ -602,7 +602,7 @@ class Emulator(CobayaComponent):
                     
                     for key,val in self.last_evaluated_state[name]['params'].items():
                         if abs(sub_state[1]['params'][key]/val-1.0) <1.e-7: # This is a bit arbitrary nad not really safe
-                            self.log.info("State was predicted before!")
+                            self.log.debug("State was predicted before!")
                             return False
                         else:
                             continue
@@ -981,7 +981,7 @@ class PCA_GPEmulator(CobayaComponent):
 
 
     def _create_kernel(self, theta_boundary_scale= 3.0, update_mask = False):
-        self.log.info("Creating kernel")
+        self.log.debug("Creating kernel")
 
         # create kernel
         a = ([0.01,5.0],[0.01,5.0],[0.01,5.0],[0.01,5.0],[0.01,5.0],[0.01,5.0])
