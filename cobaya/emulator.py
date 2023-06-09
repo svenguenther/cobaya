@@ -1374,7 +1374,7 @@ class PCA_GPEmulator(CobayaComponent):
                         ax[0].fill_between(np.arange(self.out_dim), np.arange(self.out_dim)*np.arange(self.out_dim)*(test_data[ind]-self._pca_residual_std), np.arange(self.out_dim)*np.arange(self.out_dim)*(test_data[ind]+self._pca_residual_std),color='orange', alpha=0.5, label='PCA uncertainty')
                     ax[0].grid(True)
                     ax[0].legend()
-                    ax[0].set_ylabel(r'$D^{TT}_{\ell}$')
+                    ax[0].set_ylabel('D^{TT}_{\ell}')
                     if self.name in ['pp']:
                         ax[1].plot(np.arange(self.out_dim),(np.arange(self.out_dim)*np.arange(self.out_dim))**2*(original_data[ind]-test_data[ind]), label='difference')
                         ax[1].fill_between(np.arange(self.out_dim), (np.arange(self.out_dim)*np.arange(self.out_dim))**2*(-test_data[ind]-test_unc[ind]+original_data[ind]), (np.arange(self.out_dim)*np.arange(self.out_dim))**2*(-test_data[ind]+test_unc[ind]+original_data[ind]), alpha=0.5, label='SAMPLING uncertainty')
@@ -1385,10 +1385,10 @@ class PCA_GPEmulator(CobayaComponent):
                         ax[1].fill_between(np.arange(self.out_dim), np.arange(self.out_dim)*np.arange(self.out_dim)*(-test_data[ind]-self._pca_residual_std+original_data[ind]), np.arange(self.out_dim)*np.arange(self.out_dim)*(-test_data[ind]+self._pca_residual_std+original_data[ind]),color='orange' ,alpha=0.5, label='PCA uncertainty')
                     ax[1].grid(True)
                     ax[1].legend()
-                    ax[1].set_ylabel(r'$\triangle D^{TT}_{\ell}$')
+                    ax[1].set_ylabel('\triangle D^{TT}_{\ell}')
                     cv = original_data[ind]/np.sqrt(np.arange(self.out_dim)+0.5)
 
-                    ax[2].set_ylabel(r'$\triangle D^{TT}_{\ell}/CV$')
+                    ax[2].set_ylabel('\triangle D^{TT}_{\ell}/CV')
                     ax[2].plot(np.arange(self.out_dim),(original_data[ind]-test_data[ind])/cv, label='difference')
                     ax[2].fill_between(np.arange(self.out_dim), (-test_data[ind]-test_unc[ind]+original_data[ind])/cv, (-test_data[ind]+test_unc[ind]+original_data[ind])/cv, alpha=0.5, label='SAMPLING uncertainty')
                     
