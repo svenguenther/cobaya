@@ -302,7 +302,6 @@ class PCACache(CobayaComponent):
     # This function returns the data from the cache
     def get_data(self, keys):
 
-        print(self.dataframe.head())
         if self.initialized:
             data = {}
             for key in keys:

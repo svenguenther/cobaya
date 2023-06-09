@@ -61,6 +61,12 @@ class Emulator(CobayaComponent):
     precision: float
 
     def __init__(self, *args, **kwargs):
+        import warnings
+        from sklearn.exceptions import DataConversionWarning
+        warnings.filterwarnings(action='ignore', category=DataConversionWarning)
+        from sklearn.exceptions import ConvergenceWarning
+        warnings.filterwarnings(action='ignore', category=ConvergenceWarning)
+        
         self.set_logger("emulator")
         self._emulator = None
         self._emulator_ready = False
@@ -323,7 +329,8 @@ class Emulator(CobayaComponent):
 
         #if (self.evalution_counter%100 == 0):
         if not self.in_validation:
-            self.log.info("Emulator used %d; not used %d" % (self.counter_emulator_used,self.counter_emulator_not_used))
+            if (self.evalution_counter%100 == 0):
+                self.log.info("Emulator used %d; not used %d" % (self.counter_emulator_used,self.counter_emulator_not_used))
 
         # If we are not initialized yet, we cannot calculate anything
         if not self.is_initialized:
@@ -430,7 +437,7 @@ class Emulator(CobayaComponent):
                         count += 1
 
                 if count == 0:
-                    self.log.info("Validation loglikes are consistent!")
+                    self.log.debug("Validation loglikes are consistent!")
                 elif count == 1: # THis is only debug. Remove later
                     if self.debug:
                         self.log.debug("Validate with CLASS!")
