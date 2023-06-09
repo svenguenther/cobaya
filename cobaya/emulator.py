@@ -27,7 +27,7 @@ import numpy as np
 
 from matplotlib import rc
 rc('font', **{'family': 'serif', 'serif': ['Computer Modern'], 'size': 15})
-rc('text', usetex=True)
+#rc('text', usetex=True)
 
 class quantity_GP:
     name: str       # name of this GP
@@ -829,7 +829,7 @@ class PCA_GPEmulator(CobayaComponent):
             plt.title("Data in distance matrix")
             plt.imshow(self._data_in_dist)
             plt.colorbar()
-            plt.savefig('./plots/data_in_dist.png')
+            plt.savefig('./plots/data_in_dist.pdf')
             plt.close()
 
             # Select closest neighbours
@@ -839,7 +839,7 @@ class PCA_GPEmulator(CobayaComponent):
             plt.figure()
             plt.title("Histogram of closest neighbours")
             plt.hist(self._closest_neighbor, bins=int(len(self._closest_neighbor)/2))
-            plt.savefig('./plots/hist_closest_neighbor.png')
+            plt.savefig('./plots/hist_closest_neighbor.pdf')
             plt.close()
 
         # a new PCA is required every new round
@@ -881,14 +881,14 @@ class PCA_GPEmulator(CobayaComponent):
                     ax.set_ylabel(self.name)
                     if self.name in ['tt','te','ee','pp']:
                         ax.set_xscale('log')
-                    fig.savefig('./plots/data_'+self.name+'_'+str(i)+'.png')
+                    fig.savefig('./plots/data_'+self.name+'_'+str(i)+'.pdf')
             else:
                 for i in range(len(self.data_in[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
                     ax.plot(self.data_in[:,i], self.data_out, 'o')
                     ax.set_xlabel('Input')
                     ax.set_ylabel(self.name)
-                    fig.savefig('./plots/data_'+self.name+'_'+str(i)+'.png')
+                    fig.savefig('./plots/data_'+self.name+'_'+str(i)+'.pdf')
             plt.figure().clear()
             plt.close('all')
             plt.close()
@@ -908,14 +908,14 @@ class PCA_GPEmulator(CobayaComponent):
                         ax.plot(np.arange(len(self.data_out[0])), self.data_out[j])
                     ax.set_xlabel('Input')
                     ax.set_ylabel(self.name)
-                    fig.savefig('./plots/data_'+self.name+'_'+str(i)+'_norm.png')
+                    fig.savefig('./plots/data_'+self.name+'_'+str(i)+'_norm.pdf')
             else:
                 for i in range(len(self.data_in[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
                     ax.plot(self.data_in[:,i], self.data_out, 'o')
                     ax.set_xlabel('Input')
                     ax.set_ylabel(self.name)
-                    fig.savefig('./plots/data_'+self.name+'_'+str(i)+'_norm.png')
+                    fig.savefig('./plots/data_'+self.name+'_'+str(i)+'_norm.pdf')
 
             plt.figure().clear()
             plt.close('all')
@@ -1095,7 +1095,7 @@ class PCA_GPEmulator(CobayaComponent):
                             ax.scatter(self.data_in[:,j],self._data_out_pca[:,i])
                             ax.set_xlabel('input')
                             ax.set_ylabel('PCA component %d' % i)
-                            fig.savefig('./plots_pca_gp/%s_PCA_%d_%d.png' % (self.name,i,j))
+                            fig.savefig('./plots_pca_gp/%s_PCA_%d_%d.pdf' % (self.name,i,j))
 
                     plt.figure().clear()
                     plt.close('all')
@@ -1122,7 +1122,7 @@ class PCA_GPEmulator(CobayaComponent):
                             ax.scatter(self.data_in[:,j],self._data_out_pca[:,i])
                             ax.set_xlabel('input')
                             ax.set_ylabel('PCA component %d' % i)
-                            fig.savefig('./plots_pca_gp/%s_PCA_%d_%d.png' % (self.name,i,j))
+                            fig.savefig('./plots_pca_gp/%s_PCA_%d_%d.pdf' % (self.name,i,j))
 
                     plt.figure().clear()
                     plt.close('all')
@@ -1261,13 +1261,13 @@ class PCA_GPEmulator(CobayaComponent):
             if self.n_pca is not None:
                 for i in range(len(self._data_out_pca_test[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
-                    ax.errorbar(self._data_out_pca_fit[self.test_indices,i], self._data_out_pca_fit[self.test_indices,i]-(self._data_out_pca_test[:,i]-self._out_means_pca[i])/self._out_stds_pca[i], yerr=(self._data_out_pca_test_std[:,i]-self._out_means_pca[i])/self._out_stds_pca[i], fmt='o', label='Predicted')
+                    ax.errorbar(self._data_out_pca_fit[self.test_indices,i], self._data_out_pca_fit[self.test_indices,i]-(self._data_out_pca_test[:,i]-self._out_means_pca[i])/self._out_stds_pca[i], yerr=(self._data_out_pca_test_std[:,i])/self._out_stds_pca[i], fmt='o', label='Predicted')
                     ax.set_xlabel('true')
                     ax.set_ylabel('predicted - true')
                     ax.set_title(self.name)
                     ax.grid(True)
                     ax.legend()
-                    fig.savefig('./plots/test_'+self.name+'_'+str(i)+'_gp.png')
+                    fig.savefig('./plots/test_'+self.name+'_'+str(i)+'_gp.pdf')
             else:
                 for i in range(len(self._data_out_test[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
@@ -1277,7 +1277,7 @@ class PCA_GPEmulator(CobayaComponent):
                     ax.set_title(self.name)
                     ax.grid(True)
                     ax.legend()
-                    fig.savefig('./plots/test_'+self.name+'_'+str(i)+'_gp.png')
+                    fig.savefig('./plots/test_'+self.name+'_'+str(i)+'_gp.pdf')
 
 
             # TRAIN SET !!!!!!!!!!!!!!!
@@ -1299,13 +1299,13 @@ class PCA_GPEmulator(CobayaComponent):
             if self.n_pca is not None:
                 for i in range(len(self._data_out_pca_train[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
-                    ax.errorbar(self._data_out_pca_fit[self.train_indices,i], self._data_out_pca_fit[self.train_indices,i]-(self._data_out_pca_train[:,i]-self._out_means_pca[i])/self._out_stds_pca[i], yerr=(self._data_out_pca_train_std[:,i]-self._out_means_pca[i])/self._out_stds_pca[i], fmt='o', label='Predicted')
+                    ax.errorbar(self._data_out_pca_fit[self.train_indices,i], self._data_out_pca_fit[self.train_indices,i]-(self._data_out_pca_train[:,i]-self._out_means_pca[i])/self._out_stds_pca[i], yerr=(self._data_out_pca_train_std[:,i])/self._out_stds_pca[i], fmt='o', label='Predicted')
                     ax.set_xlabel('true')
                     ax.set_ylabel('predicted - true')
                     ax.set_title(self.name)
                     ax.grid(True)
                     ax.legend()
-                    fig.savefig('./plots/train_'+self.name+'_'+str(i)+'_gp.png')
+                    fig.savefig('./plots/train_'+self.name+'_'+str(i)+'_gp.pdf')
             else:
                 for i in range(len(self._data_out_test[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
@@ -1315,7 +1315,7 @@ class PCA_GPEmulator(CobayaComponent):
                     ax.set_title(self.name)
                     ax.grid(True)
                     ax.legend()
-                    fig.savefig('./plots/train_'+self.name+'_'+str(i)+'_gp.png')
+                    fig.savefig('./plots/train_'+self.name+'_'+str(i)+'_gp.pdf')
 
             plt.figure().clear()
             plt.close('all')
