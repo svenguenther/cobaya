@@ -91,7 +91,6 @@ class Emulator(CobayaComponent):
 
         self.N_validation_states = 5 if 'N_validation_states' not in args[1] else args[1]['N_validation_states']
 
-        self.testset_fraction = 0.1 if 'testset_fraction' not in args[1] else args[1]['testset_fraction']
         
         self.validation_loglikes = np.zeros(self.N_validation_states)
         self.validation_states = []
@@ -106,6 +105,12 @@ class Emulator(CobayaComponent):
 
         self.in_validation = False
         self.debug = False if 'debug' not in args[1] else args[1]['debug']
+        self.testset_fraction = 0.1 if 'testset_fraction' not in args[1] else args[1]['testset_fraction']
+
+        # we do not need a testset fraction if we are not in debug mode
+        if not self.debug:
+            self.testset_fraction = 0.0
+
         self.counter_emulator_used = 0
         self.counter_emulator_not_used = 0
 
@@ -329,7 +334,7 @@ class Emulator(CobayaComponent):
 
         #if (self.evalution_counter%100 == 0):
         if not self.in_validation:
-            if (self.evalution_counter%100 == 0):
+            if ((self.counter_emulator_not_used+self.counter_emulator_used)%10 == 0):
                 self.log.info("Emulator used %d; not used %d" % (self.counter_emulator_used,self.counter_emulator_not_used))
 
         # If we are not initialized yet, we cannot calculate anything
@@ -1058,13 +1063,12 @@ class PCA_GPEmulator(CobayaComponent):
                 if self.n_pca is not None:
                     for i in range(self.n_pca):
                         for j in range(len(thetas[i])):
-                            bounds[i][j] = [np.exp(thetas[i][j])-0.000001,np.exp(thetas[i][j])+0.0000001]
+                            bounds[i][j] = [np.exp(thetas[i][j]),np.exp(thetas[i][j])]
                 else:
                     for i in range(self.out_dim):
                         for j in range(len(thetas[i])):
-                            bounds[i][j] = [np.exp(thetas[i][j])-0.0000001,np.exp(thetas[i][j])+0.0000001]
+                            bounds[i][j] = [np.exp(thetas[i][j]),np.exp(thetas[i][j])]
                     
-
             if self.n_pca is not None:
                 self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1:]),length_scale_bounds=tuple(bounds[i][1:])) for i in range(self.n_pca)]
             else:
