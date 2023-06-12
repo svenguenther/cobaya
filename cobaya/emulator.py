@@ -107,6 +107,9 @@ class Emulator(CobayaComponent):
         self.debug = False if 'debug' not in args[1] else args[1]['debug']
         self.testset_fraction = 0.1 if 'testset_fraction' not in args[1] else args[1]['testset_fraction']
 
+        self.N_pca_components = {} if 'N_pca' not in args[1] else args[1]['N_pca']
+        self.N_pca_components_default = 15 if 'N_pca_default' not in args[1] else args[1]['N_pca_default']
+
         # we do not need a testset fraction if we are not in debug mode
         if not self.debug:
             self.testset_fraction = 0.0
@@ -213,7 +216,9 @@ class Emulator(CobayaComponent):
                                                                   _pca_update=self._pca_update,
                                                                   _gp_fit_size=self._gp_fit_size,
                                                                   gp_initial_minimization_states=self._gp_initial_minimization_states,
-                                                                  gp_minimization_states=self._gp_minimization_states)
+                                                                  gp_minimization_states=self._gp_minimization_states,
+                                                                    N_pca_components=self.N_pca_components,
+                                                                    N_pca_components_default=self.N_pca_components_default)
                 elif type(value) == dict:
                     if len(value) == 1:
                         self.predictors[theory][key] = PCA_GPEmulator(name=str(key),
@@ -225,7 +230,9 @@ class Emulator(CobayaComponent):
                                                                       _pca_update=self._pca_update,
                                                                       _gp_fit_size=self._gp_fit_size,
                                                                       gp_initial_minimization_states=self._gp_initial_minimization_states,
-                                                                      gp_minimization_states=self._gp_minimization_states)
+                                                                      gp_minimization_states=self._gp_minimization_states,
+                                                                        N_pca_components=self.N_pca_components,
+                                                                        N_pca_components_default=self.N_pca_components_default)
                     else:
                         for k,v in value.items():   # TODO: super ugly, but works for now. Fix this
                             if key == 'Cl': 
@@ -238,7 +245,9 @@ class Emulator(CobayaComponent):
                                                                             _pca_update=self._pca_update,
                                                                             _gp_fit_size=self._gp_fit_size,
                                                                             gp_initial_minimization_states=self._gp_initial_minimization_states,
-                                                                            gp_minimization_states=self._gp_minimization_states)              
+                                                                            gp_minimization_states=self._gp_minimization_states,
+                                                                            N_pca_components=self.N_pca_components,
+                                                                            N_pca_components_default=self.N_pca_components_default)
                             else:
                                 self.predictors[theory][k] = PCA_GPEmulator(name=str(k),
                                                                             out_dim=v,
@@ -249,7 +258,9 @@ class Emulator(CobayaComponent):
                                                                             _pca_update=self._pca_update,
                                                                             _gp_fit_size=self._gp_fit_size,
                                                                             gp_initial_minimization_states=self._gp_initial_minimization_states,
-                                                                            gp_minimization_states=self._gp_minimization_states)              
+                                                                            gp_minimization_states=self._gp_minimization_states,
+                                                                            N_pca_components=self.N_pca_components,
+                                                                            N_pca_components_default=self.N_pca_components_default)
                 else:
                     self.log.error("Unknown type of prediction: %s" % type(value))
             
@@ -263,7 +274,9 @@ class Emulator(CobayaComponent):
                                                                 _pca_update=self._pca_update,
                                                                 _gp_fit_size=self._gp_fit_size,
                                                                 gp_initial_minimization_states=self._gp_initial_minimization_states,
-                                                                gp_minimization_states=self._gp_minimization_states)
+                                                                gp_minimization_states=self._gp_minimization_states,
+                                                                N_pca_components=self.N_pca_components,
+                                                                N_pca_components_default=self.N_pca_components_default)
 
         self.is_initialized = True
         return True
@@ -732,6 +745,9 @@ class PCA_GPEmulator(CobayaComponent):
 
         self.pca_cache = kwargs['pca_cache']
 
+        self.N_pca_components = kwargs['N_pca_components'] 
+        self.N_pca_components_default = kwargs['N_pca_components_default'] 
+
         self._determine_n_pca()
 
         self._out_means = np.zeros(self.out_dim)
@@ -769,8 +785,6 @@ class PCA_GPEmulator(CobayaComponent):
 
         self.data_in_add = None # data that is added to the training data
         self.data_out_add = None # data that is added to the training data
-        
-
 
         self._pca = None
         self._singular_values = None
@@ -799,14 +813,10 @@ class PCA_GPEmulator(CobayaComponent):
             self.n_pca = None
         elif self.out_dim > 1000:
             # some handwaving here. This is not really tested TODO: test this
-            if self.name == 'tt':
-                self.n_pca = 10
-            elif self.name == 'te':
-                self.n_pca = 10
-            elif self.name == 'ee':
-                self.n_pca = 8
-            elif self.name == 'pp':
-                self.n_pca = 8
+            if self.name in self.N_pca_components.keys():
+                self.n_pca = self.N_pca_components[self.name]
+            else:
+                self.n_pca = self.N_pca_components_default
         else:
             self.n_pca = None#self.out_dim
 
