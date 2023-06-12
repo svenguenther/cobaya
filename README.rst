@@ -3,6 +3,8 @@
 
 *Code under progress!*
 
+scikit-learn 1.2 and scipy 1.10 not compatible! Downgrade scipy to 1.7.
+
 This code implements a native emulator for the Bayesian inference code Cobaya. This emulator is using active learning and accuracy estimation that ensures reliable predictions.
 
 The usage is as follows. You add to your cobaya input dict or ini file following element. All values stated are the default values:
@@ -18,9 +20,9 @@ emulator:
    
    **pca_cache_size:** 2000,            # size of the cache to compute the PCA. It scales better with dimensionality than the training size \
    
-   **precision:** 0.2,                  # precision criterium for the emulator to be used \
+   **precision:** 0.1,                  # precision criterium for the emulator to be used \
    
-   **precision_linear:** 0.0,            # linear precision criterium \
+   **precision_linear:** 0.1,            # linear precision criterium \
    
                                           # Total tot_precision = precision + precision_linear * (loglike_max - loglike)   # Thus, we allow data points which are further away from the bestfit point to be more noisy \
                                           
@@ -28,15 +30,17 @@ emulator:
    
    **testset_fraction:** 0.1,           # fraction of the training set to use for validation \
    
-   **debug:** True,                     # expensive debug mode which makes a lot of plots \
+   **debug:** False,                     # expensive debug mode which makes a lot of plots \
    
    **pca_update:** 1,                   # update PCA every N training steps \
    
-   **training_size_burnin:** 60,        # number of training points during burnin mode \
-   
-   **burnin_trigger:** 1,               # number of training points after which to switch to normal mode  \
-   
    **delta_loglike_cache:** 300,        # only data points with a delta_loglike + min_loglike are cached. All other points are removed from the cache   \  
+   
+   **min_cache_size:** 30,        # minimum number of points in cache before emulator is getting trained   \  
+   
+   **gp_initial_minimization_states:** 80,        # number of kernel optimizations when learning new pca  \  
+   
+   **gp_minimization_states:** 10,        # number of kernel optimizations when NOT learning new pca   \  
 
 
 ===================
