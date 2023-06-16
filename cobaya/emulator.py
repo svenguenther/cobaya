@@ -406,6 +406,8 @@ class Emulator(CobayaComponent):
             # Create precision criterion
             if loglike!=0.0:
                 precision = self.precision + (self._max_loglike - loglike)*self.precision_linear
+                if self._max_loglike<loglike:
+                    precision = self.precision
             else:
                 precision = self.precision
 
@@ -566,8 +568,10 @@ class Emulator(CobayaComponent):
                             if key in ['tt','te','ee','pp']:
                                 if dim > self.must_provide[theory][element.name][key]:
                                     self.must_provide[theory][element.name][key] = dim
+                            else:
+                                self.must_provide[theory][element.name][key] += dim
                         else:
-                            self.must_provide[theory][element.name][key] = dim
+                            self.must_provide[theory][element.name][key] += dim
                 else:
                     self.must_provide[theory][element.name] = {}
                     for key in element.options:
@@ -580,7 +584,7 @@ class Emulator(CobayaComponent):
                                 if dim > self.must_provide[theory][element.name][key]:
                                     self.must_provide[theory][element.name][key] = dim
                             else:
-                                self.must_provide[theory][element.name][key] += dim
+                                self.must_provide[theory][element.name][key] = dim
                         else:
                             self.must_provide[theory][element.name][key] = dim
 
@@ -1006,83 +1010,93 @@ class PCA_GPEmulator(CobayaComponent):
         self.log.debug("Creating kernel")
 
         # create kernel
-        a = ([0.01,5.0],[0.01,5.0],[0.01,5.0],[0.01,5.0],[0.01,5.0],[0.01,5.0])
+
+        mode = 'isotropic' #'anisotropic'
+
         # if we have already some working kernels, we can help ourself by constraing the new ones to be similar
         if self._gps is None:
             if self.n_pca is not None:
-                #self._kernels = [ConstantKernel() * RBF() for i in range(self.n_pca)]
-                self._kernels = [ConstantKernel() * RBF(np.ones(self.in_dim)) for i in range(self.n_pca)]
+                if mode == 'isotropic':
+                    self._kernels = [ConstantKernel() * RBF() for i in range(self.n_pca)]
+                elif mode == 'anisotropic':
+                    self._kernels = [ConstantKernel() * RBF(np.ones(self.in_dim)) for i in range(self.n_pca)]
             else:
-                #self._kernels = [ConstantKernel() * RBF() for i in range(self.out_dim)]
-                self._kernels = [ConstantKernel() * RBF(np.ones(self.in_dim)) for i in range(self.out_dim)]
+                if mode == 'isotropic':
+                    self._kernels = [ConstantKernel() * RBF() for i in range(self.out_dim)]
+                elif mode == 'anisotropic':
+                    self._kernels = [ConstantKernel() * RBF(np.ones(self.in_dim)) for i in range(self.out_dim)]
         else:
-            thetas= []   
-            bounds = []
-            for i,GP in enumerate(self._gps):
 
-                thetas.append([GP.kernel_.theta[0]])
-                bounds.append([[max(np.exp(GP.kernel_.theta[0]-theta_boundary_scale),np.exp(-11.0)), min(np.exp(GP.kernel_.theta[0]+theta_boundary_scale),np.exp(11.0))]])
-                
+            if mode == 'isotropic':
+                self._kernels = self._kernels
+            elif mode == 'anisotropic':
+                thetas= []   
+                bounds = []
+                for i,GP in enumerate(self._gps):
 
-                # veto parameters that are not relevant for the kernel
-                _ = 0
-                for j in range(self.in_dim):
-                    if self._use_reduced_input:
-                        if not (self._in_mask[i,j] == False):
-                            if GP.kernel_.theta[_+1]>10.9:
-                                self._in_mask[i,j] = False  
-                                _+=1              
-                            else:
-                                thetas[i].append(GP.kernel_.theta[_+1])
-                                bounds[i].append([max(np.exp(GP.kernel_.theta[_+1]-theta_boundary_scale),np.exp(-11.0)), min(np.exp(GP.kernel_.theta[_+1]+theta_boundary_scale),np.exp(11.0))])
-                                _+=1              
-                    else:
-                        # if the previous kernel had the same number of parameters, we can use the same
-                        if len(GP.kernel_.theta)==self.in_dim+1:
-                            thetas[i].append(GP.kernel_.theta[j+1])
-                            bounds[i].append([max(np.exp(GP.kernel_.theta[j+1]-theta_boundary_scale),np.exp(-11.0)), min(np.exp(GP.kernel_.theta[j+1]+theta_boundary_scale),np.exp(11.0))])
-                        else:
-                            thetas[i] = np.append(thetas[i],1.0)
-                            bounds[i] = np.append(bounds[i],np.array([[np.exp(-11.0), np.exp(11.0)]]), axis=0)
-                        self._in_mask[i,j] = True
-
-                # transform the input mask to indices
-                self._in_mask_indices[i] = np.where(self._in_mask[i])[0]
-
-
-                
-                #self.log.info('masked in')
-                #self.log.info(self._use_reduced_input)
-                #self.log.info(self._in_mask[i])
-                #self.log.info(sum(self._in_mask[i]))
-                #self.log.info(self._in_mask_indices[i])
-                #self.log.info('pre thetas')
-                #self.log.info(GP.kernel_.theta)
-                #self.log.info(thetas[i])
-                #self.log.info(bounds[i])
-
-
-
-            #self.log.info('self.n_pca')
-            #self.log.info(self.n_pca)
-            #self.log.info('self.out_dim')
-            #self.log.info(self.out_dim)
-
-            # special case at 0.0 due to some rounding errors
-            if theta_boundary_scale == 0.0:
-                if self.n_pca is not None:
-                    for i in range(self.n_pca):
-                        for j in range(len(thetas[i])):
-                            bounds[i][j] = [np.exp(thetas[i][j]),np.exp(thetas[i][j])]
-                else:
-                    for i in range(self.out_dim):
-                        for j in range(len(thetas[i])):
-                            bounds[i][j] = [np.exp(thetas[i][j]),np.exp(thetas[i][j])]
+                    thetas.append([GP.kernel_.theta[0]])
+                    bounds.append([[max(np.exp(GP.kernel_.theta[0]-theta_boundary_scale),np.exp(-11.0)), min(np.exp(GP.kernel_.theta[0]+theta_boundary_scale),np.exp(11.0))]])
                     
-            if self.n_pca is not None:
-                self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1:]),length_scale_bounds=tuple(bounds[i][1:])) for i in range(self.n_pca)]
-            else:
-                self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1:]),length_scale_bounds=tuple(bounds[i][1:])) for i in range(self.out_dim)]
+
+                    # veto parameters that are not relevant for the kernel
+                    _ = 0
+                    for j in range(self.in_dim):
+                        if self._use_reduced_input:
+                            if not (self._in_mask[i,j] == False):
+                                if GP.kernel_.theta[_+1]>10.9:
+                                    self._in_mask[i,j] = False  
+                                    _+=1              
+                                else:
+                                    thetas[i].append(GP.kernel_.theta[_+1])
+                                    bounds[i].append([max(np.exp(GP.kernel_.theta[_+1]-theta_boundary_scale),np.exp(-11.0)), min(np.exp(GP.kernel_.theta[_+1]+theta_boundary_scale),np.exp(11.0))])
+                                    _+=1              
+                        else:
+                            # if the previous kernel had the same number of parameters, we can use the same
+                            if len(GP.kernel_.theta)==self.in_dim+1:
+                                thetas[i].append(GP.kernel_.theta[j+1])
+                                bounds[i].append([max(np.exp(GP.kernel_.theta[j+1]-theta_boundary_scale),np.exp(-11.0)), min(np.exp(GP.kernel_.theta[j+1]+theta_boundary_scale),np.exp(11.0))])
+                            else:
+                                thetas[i] = np.append(thetas[i],1.0)
+                                bounds[i] = np.append(bounds[i],np.array([[np.exp(-11.0), np.exp(11.0)]]), axis=0)
+                            self._in_mask[i,j] = True
+
+                    # transform the input mask to indices
+                    self._in_mask_indices[i] = np.where(self._in_mask[i])[0]
+
+
+                    
+                    #self.log.info('masked in')
+                    #self.log.info(self._use_reduced_input)
+                    #self.log.info(self._in_mask[i])
+                    #self.log.info(sum(self._in_mask[i]))
+                    #self.log.info(self._in_mask_indices[i])
+                    #self.log.info('pre thetas')
+                    #self.log.info(GP.kernel_.theta)
+                    #self.log.info(thetas[i])
+                    #self.log.info(bounds[i])
+
+
+
+                #self.log.info('self.n_pca')
+                #self.log.info(self.n_pca)
+                #self.log.info('self.out_dim')
+                #self.log.info(self.out_dim)
+
+                # special case at 0.0 due to some rounding errors
+                if theta_boundary_scale == 0.0:
+                    if self.n_pca is not None:
+                        for i in range(self.n_pca):
+                            for j in range(len(thetas[i])):
+                                bounds[i][j] = [np.exp(thetas[i][j]),np.exp(thetas[i][j])]
+                    else:
+                        for i in range(self.out_dim):
+                            for j in range(len(thetas[i])):
+                                bounds[i][j] = [np.exp(thetas[i][j]),np.exp(thetas[i][j])]
+                        
+                if self.n_pca is not None:
+                    self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1:]),length_scale_bounds=tuple(bounds[i][1:])) for i in range(self.n_pca)]
+                else:
+                    self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1:]),length_scale_bounds=tuple(bounds[i][1:])) for i in range(self.out_dim)]
         
 
         self.log.debug('kernels done')
@@ -1099,7 +1113,7 @@ class PCA_GPEmulator(CobayaComponent):
         # create GP if it is not already created
         if self._gps is None:
             if self.n_pca is not None:
-                self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts_initial, alpha=1.e-8) for i in range(self.n_pca)]
+                self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts_initial, alpha=1.e-10) for i in range(self.n_pca)]
 
                 if self.debug:
                     #do some GP input plots for PCA
@@ -1121,7 +1135,6 @@ class PCA_GPEmulator(CobayaComponent):
 
 
             else:
-
                 self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts_initial, alpha=1.e-8) for i in range(self.out_dim)]
         else:
             if self.n_pca is not None:
@@ -1214,6 +1227,9 @@ class PCA_GPEmulator(CobayaComponent):
                 self.log.debug("GP score train: %f" % score_train)
                 self.log.debug("GP score test: %f" % score_test)
             else:
+                #print(self.name)
+                #print(self.out_dim)
+                #print(len(self._gps))
                 if len(self._gps) == 1:
                     GP.fit(self.data_in_fit[np.ix_(self.train_indices, self._in_mask_indices[i])], self.data_out_fit[self.train_indices])
                     score_train = GP.score(self.data_in_fit[np.ix_(self.train_indices, self._in_mask_indices[i])], self.data_out_fit[self.train_indices,i])
