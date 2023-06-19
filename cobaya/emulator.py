@@ -83,7 +83,7 @@ class Emulator(CobayaComponent):
 
         # This is relevat error criterion if we leave the vicinity of the training set. It scales the allowed error linear in log10 of the loglike distance
         self.precision_linear = 1.e-1 if 'precision_linear' not in args[1] else args[1]['precision_linear']
-
+        self.precision_quadratic = 1.e-1 if 'precision_quadratic' not in args[1] else args[1]['precision_quadratic']
         self._max_loglike = -np.inf # This is the minimal loglike value we witnessed so far
 
         self.min_cache_size = 30 if 'min_cache_size' not in args[1] else args[1]['min_cache_size']
@@ -405,7 +405,7 @@ class Emulator(CobayaComponent):
 
             # Create precision criterion
             if loglike!=0.0:
-                precision = self.precision + (self._max_loglike - loglike)*self.precision_linear
+                precision = self.precision + (self._max_loglike - loglike)*self.precision_linear + (self._max_loglike - loglike)**2 * self.precision_quadratic
                 if self._max_loglike<loglike:
                     precision = self.precision
             else:
@@ -802,7 +802,7 @@ class PCA_GPEmulator(CobayaComponent):
         self._gps = None
 
         # precision parameters regarding the GP
-        self._theta_boundary_scale = 3.0 # how far to go in each direction when searching for the best theta
+        self._theta_boundary_scale = 5.0 # how far to go in each direction when searching for the best theta
         self._N_restarts_initial = self._gp_initial_minimization_states # how many random restarts to do for the initial theta
         self._N_restarts = self._gp_minimization_states # how many random restarts to do for the theta after the initial one
 
@@ -863,6 +863,7 @@ class PCA_GPEmulator(CobayaComponent):
 
         # a new PCA is required every new round
         pca_created = self._create_pca(renormalize)
+
         return pca_created
     
     def _normalize_training_data(self, renormalize=True):
@@ -979,23 +980,24 @@ class PCA_GPEmulator(CobayaComponent):
 
             self._data_out_pca = self._pca.transform(self.data_out)
 
-            # retranform the data to check
-            reconst = self._pca.inverse_transform(self._data_out_pca)
+            if renormalize:
+                # retranform the data to check
+                reconst = self._pca.inverse_transform(self._data_out_pca)
 
-            # get the residuals
-            residuals = self.data_out - reconst
+                # get the residuals
+                residuals = self.data_out - reconst
 
-            # get the variance of the residuals and unnormalize
-            self._pca_residual_std = np.std(residuals, axis=0)*self._out_stds
+                # get the variance of the residuals and unnormalize
+                self._pca_residual_std = 2*np.std(residuals, axis=0)*self._out_stds
 
-            #self.log.info('residual variance')
-            #self.log.info(self._pca_residual_std)
-            #self.log.info(self._pca_residual_std.shape)
-            
+                #self.log.info('residual variance')
+                #self.log.info(self._pca_residual_std)
+                #self.log.info(self._pca_residual_std.shape)
+                
 
-            # normalize the pca compoenents
-            self._out_means_pca = np.mean(self._data_out_pca, axis=0)
-            self._out_stds_pca = np.std(self._data_out_pca, axis=0)
+                # normalize the pca compoenents
+                self._out_means_pca = np.mean(self._data_out_pca, axis=0)
+                self._out_stds_pca = np.std(self._data_out_pca, axis=0)
 
             self._data_out_pca = (self._data_out_pca - self._out_means_pca)/self._out_stds_pca
 
@@ -1028,7 +1030,29 @@ class PCA_GPEmulator(CobayaComponent):
         else:
 
             if mode == 'isotropic':
-                self._kernels = self._kernels
+                thetas= []   
+                bounds = []
+                for i,GP in enumerate(self._gps):
+                    thetas.append([GP.kernel_.theta[0],GP.kernel_.theta[1]])
+                    bounds.append([[max(np.exp(GP.kernel_.theta[0]-theta_boundary_scale),np.exp(-11.0)), min(np.exp(GP.kernel_.theta[0]+theta_boundary_scale),np.exp(11.0))],[max(np.exp(GP.kernel_.theta[1]-theta_boundary_scale),np.exp(-11.0)), min(np.exp(GP.kernel_.theta[1]+theta_boundary_scale),np.exp(11.0))]])
+                    
+
+                if theta_boundary_scale == 0.0:
+                    if self.n_pca is not None:
+                        for i in range(self.n_pca):
+                            for j in range(len(thetas[i])):
+                                bounds[i][j] = [np.exp(thetas[i][j]),np.exp(thetas[i][j])]
+                    else:
+                        for i in range(self.out_dim):
+                            for j in range(len(thetas[i])):
+                                bounds[i][j] = [np.exp(thetas[i][j]),np.exp(thetas[i][j])]
+                        
+                if self.n_pca is not None:
+                    self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1]),length_scale_bounds=tuple(bounds[i][1])) for i in range(self.n_pca)]
+                else:
+                    self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1]),length_scale_bounds=tuple(bounds[i][1])) for i in range(self.out_dim)]
+        
+                #self._kernels = self._kernels
             elif mode == 'anisotropic':
                 thetas= []   
                 bounds = []
@@ -1073,7 +1097,6 @@ class PCA_GPEmulator(CobayaComponent):
                     #self.log.info('pre thetas')
                     #self.log.info(GP.kernel_.theta)
                     #self.log.info(thetas[i])
-                    #self.log.info(bounds[i])
 
 
 
@@ -1113,7 +1136,7 @@ class PCA_GPEmulator(CobayaComponent):
         # create GP if it is not already created
         if self._gps is None:
             if self.n_pca is not None:
-                self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts_initial, alpha=1.e-10) for i in range(self.n_pca)]
+                self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts_initial, alpha=1.e-8) for i in range(self.n_pca)]
 
                 if self.debug:
                     #do some GP input plots for PCA
@@ -1219,7 +1242,7 @@ class PCA_GPEmulator(CobayaComponent):
             #self.log.info(self.data_in[self.train_indices].shape)
             #self.log.info(self.data_in[np.ix_(self.train_indices, self._in_mask_indices[i])].shape)
             
-            
+
             if self.n_pca is not None:
                 GP.fit(self.data_in_fit[np.ix_(self.train_indices, self._in_mask_indices[i])], self._data_out_pca_fit[self.train_indices,i])
                 score_train = GP.score(self.data_in_fit[np.ix_(self.train_indices, self._in_mask_indices[i])], self._data_out_pca_fit[self.train_indices,i])
@@ -1466,6 +1489,7 @@ class PCA_GPEmulator(CobayaComponent):
                 GP.fit(self.data_in[:,self._in_mask_indices[i]], self._data_out_pca[:,i])
             else:
                 GP.fit(self.data_in[:,self._in_mask_indices[i]], self.data_out[:,i])
+
 
         self.log.debug("Time to fit full GP: %f" % (time.time() - start))
 
