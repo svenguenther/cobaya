@@ -1013,7 +1013,7 @@ class PCA_GPEmulator(CobayaComponent):
 
         # create kernel
 
-        mode = 'isotropic' #'anisotropic'
+        mode = 'anisotropic'
 
         # if we have already some working kernels, we can help ourself by constraing the new ones to be similar
         if self._gps is None:
