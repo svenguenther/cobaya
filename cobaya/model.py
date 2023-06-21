@@ -103,9 +103,6 @@ class LogPosterior:
 
     def _logpost(self):
         """Computes logpost from prior and likelihood product."""
-        print("Computing logpost = logprior + loglike")
-        print(self.logprior)
-        print(self.loglike)
         
         return self.logprior + self.loglike
 
@@ -383,7 +380,7 @@ class Model(HasLogger):
         outpar_dict: ParamValuesDict = {}
         compute_success = True
         self.provider.set_current_input_params(input_params)
-        self.log.info("Got input parameters: %r", input_params)
+        #self.log.info("Got input parameters: %r", input_params)
         loglikes = np.zeros(len(self.likelihood))
         need_derived = self.requires_derived or return_derived or return_output_params
         self.in_validation = False
@@ -451,7 +448,7 @@ class Model(HasLogger):
             else:
                 self.in_validation = False
 
-        self.log.info("SUCCESS FLAG")
+        #self.log.info("SUCCESS FLAG")
 
         # Here we add new data to the emulator. It is either accepted or rejected.
         if theory_flag == 1:

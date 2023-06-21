@@ -68,6 +68,7 @@ class Emulator(CobayaComponent):
 
         # This is relevat error criterion if we leave the vicinity of the training set. It scales the allowed error linear in log10 of the loglike distance
         self.precision_linear = 1.e-1 if 'precision_linear' not in args[1] else args[1]['precision_linear']
+        self.precision_quadratic = 0.0 if 'precision_quadratic' not in args[1] else args[1]['precision_quadratic']
 
         self._max_loglike = -np.inf # This is the minimal loglike value we witnessed so far
 
@@ -75,7 +76,10 @@ class Emulator(CobayaComponent):
         self.N_validation_states = 5 if 'N_validation_states' not in args[1] else args[1]['N_validation_states']
 
         self.testset_fraction = 0.1 if 'testset_fraction' not in args[1] else args[1]['testset_fraction']
-        
+
+        self.N_pca_components = {} if 'N_pca' not in args[1] else args[1]['N_pca']
+        self.N_pca_components_default = 15 if 'N_pca_default' not in args[1] else args[1]['N_pca_default']
+
         self.validation_loglikes = np.zeros(self.N_validation_states)
         self.validation_states = []
         self.predictors = None
@@ -102,6 +106,10 @@ class Emulator(CobayaComponent):
 
         self.last_evaluated_state = {}
 
+        self.timings = {'training':0.0,
+                        'evaluating':0.0,
+                        'add_data':0.0}
+
         self.set_timing_on(True)
 
         # check if log file exists and delete it
@@ -109,7 +117,8 @@ class Emulator(CobayaComponent):
         if os.path.exists('log_file.txt'):
             os.remove('log_file.txt')
 
-
+        self._gp_initial_minimization_states = 40 if 'gp_initial_minimization_states' not in args[1] else args[1]['gp_initial_minimization_states']
+        self._gp_minimization_states = 5 if 'gp_minimization_states' not in args[1] else args[1]['gp_minimization_states']
 
         # Create a cache instance
         self.data_cache = EmulatorCache(
@@ -131,7 +140,6 @@ class Emulator(CobayaComponent):
 
 
     def initialize_from_file(self):
-        self.log.info("Initializing from file")
 
         self.is_initialized = True
         return False
@@ -145,7 +153,6 @@ class Emulator(CobayaComponent):
             f.write('\n')
 
     def initialize(self,state):
-        self.log.info("Initializing")
         self._emulator = None
         self._emulator_ready = False
         self._emulator_trained = False
@@ -188,7 +195,11 @@ class Emulator(CobayaComponent):
                                                                   pca_cache=self.pca_cache, 
                                                                   debug=self.debug, 
                                                                   _pca_update=self._pca_update,
-                                                                  _gp_fit_size=self._gp_fit_size)
+                                                                  _gp_fit_size=self._gp_fit_size,
+                                                                  gp_initial_minimization_states=self._gp_initial_minimization_states,
+                                                                  gp_minimization_states=self._gp_minimization_states,
+                                                                  N_pca_components=self.N_pca_components,
+                                                                  N_pca_components_default=self.N_pca_components_default)
                 elif type(value) == dict:
                     if len(value) == 1:
                         self.predictors[theory][key] = PCA_GPEmulator(name=str(key),
@@ -198,7 +209,11 @@ class Emulator(CobayaComponent):
                                                                       pca_cache=self.pca_cache, 
                                                                       debug=self.debug, 
                                                                       _pca_update=self._pca_update,
-                                                                      _gp_fit_size=self._gp_fit_size)
+                                                                      _gp_fit_size=self._gp_fit_size,
+                                                                      gp_initial_minimization_states=self._gp_initial_minimization_states,
+                                                                      gp_minimization_states=self._gp_minimization_states,
+                                                                      N_pca_components=self.N_pca_components,
+                                                                      N_pca_components_default=self.N_pca_components_default)
                     else:
                         for k,v in value.items():   # TODO: super ugly, but works for now. Fix this
                             if key == 'Cl': 
@@ -209,7 +224,12 @@ class Emulator(CobayaComponent):
                                                                             pca_cache=self.pca_cache, 
                                                                             debug=self.debug,
                                                                             _pca_update=self._pca_update,
-                                                                            _gp_fit_size=self._gp_fit_size)              
+                                                                            _gp_fit_size=self._gp_fit_size,
+                                                                            gp_initial_minimization_states=self._gp_initial_minimization_states,
+                                                                            gp_minimization_states=self._gp_minimization_states,
+                                                                            N_pca_components=self.N_pca_components,
+                                                                            N_pca_components_default=self.N_pca_components_default)
+              
                             else:
                                 self.predictors[theory][k] = PCA_GPEmulator(name=str(k),
                                                                             out_dim=v,
@@ -218,7 +238,11 @@ class Emulator(CobayaComponent):
                                                                             pca_cache=self.pca_cache, 
                                                                             debug=self.debug, 
                                                                             _pca_update=self._pca_update,
-                                                                            _gp_fit_size=self._gp_fit_size)              
+                                                                            _gp_fit_size=self._gp_fit_size,
+                                                                            gp_initial_minimization_states=self._gp_initial_minimization_states,
+                                                                            gp_minimization_states=self._gp_minimization_states,
+                                                                            N_pca_components=self.N_pca_components,
+                                                                            N_pca_components_default=self.N_pca_components_default)
                 else:
                     self.log.error("Unknown type of prediction: %s" % type(value))
             
@@ -230,13 +254,17 @@ class Emulator(CobayaComponent):
                                                                 pca_cache=self.pca_cache, 
                                                                 debug=self.debug, 
                                                                 _pca_update=self._pca_update,
-                                                                _gp_fit_size=self._gp_fit_size)
+                                                                _gp_fit_size=self._gp_fit_size,
+                                                                gp_initial_minimization_states=self._gp_initial_minimization_states,
+                                                                gp_minimization_states=self._gp_minimization_states,
+                                                                N_pca_components=self.N_pca_components,
+                                                                N_pca_components_default=self.N_pca_components_default)
 
         self.is_initialized = True
         return True
 
     def _create_validation_states(self, theory, state):
-        self.log.info("Creating validation states")
+        #self.log.info("Creating validation states")
 
         # No need for validation if not requested
         if self.N_validation_states == 0:
@@ -264,7 +292,7 @@ class Emulator(CobayaComponent):
         
 
     def _create_PCA_validation_states(self, theory, state):
-        self.log.info("Creating PCA validation states")
+        #self.log.info("Creating PCA validation states")
 
         # No need for validation if not requested
         if self.N_PCA_validation_states == 0:
@@ -308,7 +336,9 @@ class Emulator(CobayaComponent):
 
         #if (self.evalution_counter%100 == 0):
         if not self.in_validation:
-            self.log.info("Emulator used %d; not used %d" % (self.counter_emulator_used,self.counter_emulator_not_used))
+            if ((self.counter_emulator_not_used+self.counter_emulator_used)%10 == 0):
+                self.log.info("Emulator used %d; not used %d" % (self.counter_emulator_used,self.counter_emulator_not_used))
+                self.log.info(self.timings)
 
         # If we are not initialized yet, we cannot calculate anything
         if not self.is_initialized:
@@ -332,11 +362,13 @@ class Emulator(CobayaComponent):
 
         # Should we train the emulator? Then train I guess 
         if ((self.data_cache._newly_added_points+1) % self.learn_every == 0) and (self.counter_emulator_not_used>self.postpone_learning):
-            self.log.info("_train_emulator")
+            self.log.debug("_train_emulator")
             if self.in_validation == False:
                 self.write_log_step('train')
+                t_start = time.time()
                 self._load_data_to_GP(renormalize=True)
                 self._train_emulator()
+                self.timings['training'] += time.time()-t_start
 
 
         # If we are not ready yet, we cannot calculate anything
@@ -352,12 +384,16 @@ class Emulator(CobayaComponent):
             # in first iteration, create validation states
             if self.in_validation == False:
                 self.log.debug("Creating validation states")
+                t_start = time.time()
                 self._create_validation_states(theory, state)
+                self.timings['evaluating'] += time.time()-t_start
                 self.in_validation = True
 
             # Create precision criterion
             if loglike!=0.0:
-                precision = self.precision + (self._max_loglike - loglike)*self.precision_linear
+                precision = self.precision + (self._max_loglike - loglike)*self.precision_linear + (self._max_loglike - loglike)**2 * self.precision_quadratic
+                if self._max_loglike<loglike:
+                    precision = self.precision
             else:
                 precision = self.precision
 
@@ -378,7 +414,7 @@ class Emulator(CobayaComponent):
                             else:
                                 if abs(loglike-self.validation_loglikes[i-1]) > precision:
                                     self.validation_loglikes[i] = loglike
-                                    self.log.error("Validation loglikes are not consistent!")                            
+                                    self.log.debug("Validation loglikes are not consistent!")                            
                                     self.in_validation = False
                                     self.counter_emulator_not_used += 1
                                     self.write_log_step('not_used')
@@ -387,7 +423,7 @@ class Emulator(CobayaComponent):
                         else:
                             if abs(loglike-self.validation_loglikes[i-1]) > precision:
                                 self.validation_loglikes[i] = loglike
-                                self.log.error("Validation loglikes are not consistent!")                            
+                                self.log.debug("Validation loglikes are not consistent!")                            
                                 self.in_validation = False
                                 self.counter_emulator_not_used += 1
                                 self.write_log_step('not_used')
@@ -407,7 +443,7 @@ class Emulator(CobayaComponent):
                         count += 1
 
                 if count == 0:
-                    self.log.info("Validation loglikes are consistent!")
+                    self.log.debug("Validation loglikes are consistent!")
                 elif count == 1: # THis is only debug. Remove later
                     if self.debug:
                         self.log.debug("Validate with CLASS!")
@@ -426,6 +462,8 @@ class Emulator(CobayaComponent):
         
         self.in_validation = False
 
+        t_start = time.time()
+
         # Now we can emulate the state and evaluate the accuracy
         data_in = np.array([[value for key,value in state['params'].items()]])
         for name, GP in self.predictors[theory].items():
@@ -441,6 +479,8 @@ class Emulator(CobayaComponent):
                         if k == name:
                             #self.log.info("Setting %s to %s" % (k, pred))
                             self.state[theory][key][k] = pred
+        
+        self.timings['evaluating'] += time.time()-t_start
 
         self.state[theory]['params'] = state['params']
 
@@ -498,8 +538,8 @@ class Emulator(CobayaComponent):
     # Set the required parameters for each theory code
     def _set_theories(self, theory):
         self.theories.append(theory)
-        self.log.info('theory')
-        self.log.info(theory)
+        #self.log.info('theory')
+        #self.log.info(theory)
         return False
     
     # Set the required parameters for each theory code
@@ -513,12 +553,12 @@ class Emulator(CobayaComponent):
             elif type(element.options)==dict:
                 if element.name in self.must_provide[theory].keys():
                     for key in element.options:
-                        if type(element.options[key])==int:
+                        if (type(element.options[key])==int) or (type(element.options[key])==np.int64):
                             dim = element.options[key]
                         else:
                             dim = len(element.options[key])
                         if key in self.must_provide[theory][element.name].keys():
-                            if key in ['tt','te','ee']:
+                            if key in ['tt','te','ee','pp']:
                                 if dim > self.must_provide[theory][element.name][key]:
                                     self.must_provide[theory][element.name][key] = dim
                             else:
@@ -533,14 +573,26 @@ class Emulator(CobayaComponent):
                         else:
                             dim = len(element.options[key])
                         if key in self.must_provide[theory][element.name].keys():
-                            if key in ['tt','te','ee']:
+                            if key in ['tt','te','ee','pp']:
                                 if dim > self.must_provide[theory][element.name][key]:
                                     self.must_provide[theory][element.name][key] = dim
                             else:
                                 self.must_provide[theory][element.name][key] += dim
                         else:
                             self.must_provide[theory][element.name][key] = dim
-            
+
+        # EBS work in the way that they calc all cls to the highest demanded ell
+        if 'Cl' in self.must_provide[theory].keys():
+            max_ell = 0
+            for key in self.must_provide[theory]['Cl'].keys():
+                if key in ['tt','te','ee','pp']:
+                    if self.must_provide[theory]['Cl'][key] > max_ell:
+                        max_ell = self.must_provide[theory]['Cl'][key]
+
+            for key in self.must_provide[theory]['Cl'].keys():
+                if key in ['tt','te','ee','pp']:
+                    self.must_provide[theory]['Cl'][key] = max_ell
+
         return False
 
     def get_must_provide(self):
@@ -572,7 +624,7 @@ class Emulator(CobayaComponent):
                     
                     for key,val in self.last_evaluated_state[name]['params'].items():
                         if abs(sub_state[1]['params'][key]/val-1.0) <1.e-7: # This is a bit arbitrary nad not really safe
-                            self.log.info("State was predicted before!")
+                            #self.log.info("State was predicted before!")
                             return False
                         else:
                             continue
@@ -584,6 +636,8 @@ class Emulator(CobayaComponent):
         # Initialize if not already done so
         if not self.is_initialized:
             self.initialize(theory_states)
+
+        t_start = time.time()
 
         cs_theory = self._condense_data(theory_states)
         cs_likelihood = self._condense_data(likelihood_states)
@@ -597,7 +651,7 @@ class Emulator(CobayaComponent):
             added = self.data_cache.add_data(cs_theory,loglike)
 
         if added:
-            self.log.info('ADDED STATE!!!')
+            #self.log.info('ADDED STATE!!!')
             #self.log.info(state)
             self.write_log_step('added', loglike)
         
@@ -607,9 +661,13 @@ class Emulator(CobayaComponent):
         else:
             self.pca_cache.add_data({**cs_theory, **cs_likelihood},loglike,theory_name)
 
+        self.timings['add_data'] += time.time()-t_start
+
         # Update the GP if a point was added and the emulator is actually trained:
         if added and self._emulator_trained:
+            t_start = time.time()
             self._update_GP()
+            self.timings['training'] += time.time()-t_start
 
         return True
     
@@ -687,6 +745,9 @@ class PCA_GPEmulator(CobayaComponent):
 
         self.pca_cache = kwargs['pca_cache']
 
+        self.N_pca_components = kwargs['N_pca_components'] 
+        self.N_pca_components_default = kwargs['N_pca_components_default'] 
+
         self._determine_n_pca()
 
         self._out_means = np.zeros(self.out_dim)
@@ -740,8 +801,8 @@ class PCA_GPEmulator(CobayaComponent):
 
         # precision parameters regarding the GP
         self._theta_boundary_scale = 3.0 # how far to go in each direction when searching for the best theta
-        self._N_restarts_initial = 40 # how many random restarts to do for the initial theta
-        self._N_restarts = 5 # how many random restarts to do for the theta after the initial one
+        self._N_restarts_initial = 40 if 'gp_initial_minimization_states' not in kwargs else kwargs['gp_initial_minimization_states'] # how many random restarts to do for the initial theta
+        self._N_restarts = 5 if 'gp_minimization_states' not in kwargs else kwargs['gp_minimization_states'] # how many random restarts to do for the theta after the initial one
 
         self._use_reduced_input = False # whether to use the reduced input for the GP
 
@@ -753,7 +814,11 @@ class PCA_GPEmulator(CobayaComponent):
         if self.out_dim == 1:
             self.n_pca = None
         elif self.out_dim > 1000:
-            self.n_pca = 10
+            # some handwaving here. This is not really tested TODO: test this
+            if self.name in self.N_pca_components.keys():
+                self.n_pca = self.N_pca_components[self.name]
+            else:
+                self.n_pca = self.N_pca_components_default
         else:
             self.n_pca = None#self.out_dim
 
@@ -821,15 +886,15 @@ class PCA_GPEmulator(CobayaComponent):
 
         if self.debug and renormalize:
             # plot the data
-            if self.name in ['tt','te','ee','angular_diameter_distance','Hubble']:
+            if self.name in ['tt','te','ee','pp','angular_diameter_distance','Hubble']:
                 for i in range(len(self.data_in[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
                     for j in range(len(self.data_out)):
-                        if self.name in ['tt','te','ee']:
+                        if self.name in ['tt','te','ee','pp']:
                             ax.plot(np.arange(len(self.data_out[0])), np.arange(len(self.data_out[0]))*np.arange(len(self.data_out[0]))*self.data_out[j])
                     ax.set_xlabel('Input')
                     ax.set_ylabel(self.name)
-                    if self.name in ['tt','te','ee']:
+                    if self.name in ['tt','te','ee','pp']:
                         ax.set_xscale('log')
                     fig.savefig('./plots/data_'+self.name+'_'+str(i)+'.png')
             else:
@@ -851,7 +916,7 @@ class PCA_GPEmulator(CobayaComponent):
 
         if self.debug and renormalize:
             # plot the data
-            if self.name in ['tt','te','ee','angular_diameter_distance','Hubble']:
+            if self.name in ['tt','te','ee','pp','angular_diameter_distance','Hubble']:
                 for i in range(len(self.data_in[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
                     for j in range(len(self.data_out)):
@@ -882,7 +947,7 @@ class PCA_GPEmulator(CobayaComponent):
             return False
         else:
             if renormalize and ((self._pca_counter%self._pca_update)==0):
-                self.log.info("Creating PCA")
+                #self.log.info("Creating PCA")
                 self._pca = PCA(n_components=self.n_pca)
 
                 data_pca_cache = self.pca_cache.get_data([self.name])[self.name]
@@ -938,7 +1003,7 @@ class PCA_GPEmulator(CobayaComponent):
 
 
     def _create_kernel(self, theta_boundary_scale= 3.0, update_mask = False):
-        self.log.info("Creating kernel")
+        #self.log.info("Creating kernel")
 
         # create kernel
         a = ([0.01,5.0],[0.01,5.0],[0.01,5.0],[0.01,5.0],[0.01,5.0],[0.01,5.0])
@@ -1021,7 +1086,7 @@ class PCA_GPEmulator(CobayaComponent):
                 self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1:]),length_scale_bounds=tuple(bounds[i][1:])) for i in range(self.out_dim)]
         
 
-        self.log.info('kernels done')
+        #self.log.info('kernels done')
         
         return True
 
@@ -1030,13 +1095,13 @@ class PCA_GPEmulator(CobayaComponent):
         if self.timer:
             self.timer.start()
 
-        self.log.info("Creating GP")
+        #self.log.info("Creating GP")
 
         # create GP if it is not already created
         if self._gps is None:
             if self.n_pca is not None:
-                self.log.info('self.n_pca')
-                self.log.info(self.n_pca)
+                #self.log.info('self.n_pca')
+                #self.log.info(self.n_pca)
                 self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts_initial, alpha=1.e-8) for i in range(self.n_pca)]
 
                 if self.debug:
@@ -1123,12 +1188,12 @@ class PCA_GPEmulator(CobayaComponent):
 
         self.train_indices, self.test_indices = train_test_split(np.arange(len(self.data_in_fit)), test_size=self.testset_fraction, random_state=42)
 
-        self.log.info("Test set size: %d" % len(self.test_indices))
-        self.log.info("Train set size: %d" % len(self.train_indices))
+        #self.log.info("Test set size: %d" % len(self.test_indices))
+        #self.log.info("Train set size: %d" % len(self.train_indices))
 
 
         # Train the GP
-        self.log.info("Training GP")
+        #self.log.info("Training GP")
         start = time.time()
         for i,GP in enumerate(self._gps):
             #self.log.info("Training GP %d" % i)
@@ -1163,10 +1228,8 @@ class PCA_GPEmulator(CobayaComponent):
                     self.log.debug("GP score test: %f" % score_test)
         
 
-            self.log.info('post thetas')
-            self.log.info(GP.kernel_.theta)
 
-        self.log.info("Time to fit kernel: %f" % (time.time() - start))
+        #self.log.info("Time to fit kernel: %f" % (time.time() - start))
 
 
         # Once the kernel are fitted we can calculate the full GP including the additional dataset.
@@ -1230,7 +1293,7 @@ class PCA_GPEmulator(CobayaComponent):
 
 
             # TRAIN SET !!!!!!!!!!!!!!!
-            self.log.info("Testing GP")
+            #self.log.info("Testing GP")
             if self.n_pca is not None:
                 self._data_out_pca_train = np.zeros((len(self.train_indices), self.n_pca))
                 self._data_out_pca_train_std = np.zeros((len(self.train_indices), self.n_pca))
@@ -1363,7 +1426,7 @@ class PCA_GPEmulator(CobayaComponent):
         start = time.time()
         # create kernels again with fixed values
         self._create_kernel(0.0, update_mask=False)
-        self.log.info("Training GP on additional data")
+        #self.log.info("Training GP on additional data")
 
         if self.n_pca is not None:
             self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=0, alpha=1.e-8) for i in range(self.n_pca)]
@@ -1377,7 +1440,7 @@ class PCA_GPEmulator(CobayaComponent):
             else:
                 GP.fit(self.data_in[:,self._in_mask_indices[i]], self.data_out[:,i])
 
-        self.log.info("Time to fit full GP: %f" % (time.time() - start))
+        #self.log.info("Time to fit full GP: %f" % (time.time() - start))
 
         return True
     

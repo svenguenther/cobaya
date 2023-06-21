@@ -284,10 +284,10 @@ class Theory(CobayaComponent):
                 try:
                     if emulator.in_validation:
                         self.is_validated = False
-                        self.log.info("Validation mode CLASS" )
+                        #self.log.info("Validation mode CLASS" )
                     else:
                         self.is_validated = True
-                        self.log.info("Ground mode CLASS" )
+                        #self.log.info("Ground mode CLASS" )
                 except:
                     self.is_validated = True
                 if self.calculate(state, want_derived, **params_values_dict) is False:

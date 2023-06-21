@@ -71,10 +71,7 @@ class EmulatorCache(CobayaComponent):
             for key in keys:
                 data[key] = np.array([np.array(_) for _ in self.dataframes[theory].sort_values(by=['loglike']).tail(N)[key].values])
                 if key == 'tt':
-                    self.log.info('tt')
                     ll = [_[0] for _ in data[key]]
-                    self.log.info(len(ll))
-                    self.log.info(ll)
             return data
         else:
             self.log.error("Cache is empty. Training not possible")
@@ -94,8 +91,8 @@ class EmulatorCache(CobayaComponent):
             min_loglike = self.dataframes[self.theories[0]]['loglike'].min()
             max_loglike = self.dataframes[self.theories[0]]['loglike'].max()
 
-            self.log.info("Min loglike in data cache: {}".format(min_loglike))
-            self.log.info("Max loglike in data cache: {}".format(max_loglike))
+            self.log.debug("Min loglike in data cache: {}".format(min_loglike))
+            self.log.debug("Max loglike in data cache: {}".format(max_loglike))
 
             # Remove datapoints with a loglikelihood lower than the minimum loglikelihood + delta_loglike_cache
             self.dataframe_propose = self.dataframes[self.theories[0]][self.dataframes[self.theories[0]]['loglike'] > max_loglike-self.delta_loglike_cache]
@@ -135,8 +132,8 @@ class EmulatorCache(CobayaComponent):
             min_loglike = self.dataframes[self.theories[0]]['loglike'].min()
             max_loglike = self.dataframes[self.theories[0]]['loglike'].max()
 
-            self.log.info("Min loglike in data cache: {}".format(min_loglike))
-            self.log.info("Max loglike in data cache: {}".format(max_loglike))
+            self.log.debug("Min loglike in data cache: {}".format(min_loglike))
+            self.log.debug("Max loglike in data cache: {}".format(max_loglike))
 
             # Remove datapoints with a loglikelihood lower than the minimum loglikelihood + delta_loglike_cache
             self.dataframe_propose = self.dataframes[self.theories[0]][self.dataframes[self.theories[0]]['loglike'] > max_loglike-self.delta_loglike_cache]
@@ -181,7 +178,7 @@ class EmulatorCache(CobayaComponent):
 
         # calculate the distance matrix
         if self._N_dist_update_counter%self._N_dist_update == 0:
-            self.log.info("Calculating distance matrix")
+            self.log.debug("Calculating distance matrix")
             _data_in_dist = np.zeros((params.shape[0],params.shape[0]))
             for i in range(params.shape[0]):
                 for j in range(params.shape[0]):
@@ -199,9 +196,9 @@ class EmulatorCache(CobayaComponent):
 
         # get the minimum distance
         min_dist = np.min(dist)
-        self.log.info("Minimum distance: {}".format(min_dist))
-        self.log.info("Threshold distance: {}".format(self._proximity_threshold*neighbour_dist_mean))
-        self.log.info("neighbour_dist_mean: {}".format(neighbour_dist_mean))
+        self.log.debug("Minimum distance: {}".format(min_dist))
+        self.log.debug("Threshold distance: {}".format(self._proximity_threshold*neighbour_dist_mean))
+        self.log.debug("neighbour_dist_mean: {}".format(neighbour_dist_mean))
 
         self._N_dist_update_counter += 1
 
@@ -317,9 +314,9 @@ class PCACache(CobayaComponent):
         min_loglike = self.dataframe['loglike'].min()
         max_loglike = self.dataframe['loglike'].max()
 
-        self.log.info("Min loglike in PCA cache: {}".format(min_loglike))
-        self.log.info("Max loglike in PCA cache: {}".format(max_loglike))
-        self.log.info("Size of PCA cache: {}".format(self._size()))
+        self.log.debug("Min loglike in PCA cache: {}".format(min_loglike))
+        self.log.debug("Max loglike in PCA cache: {}".format(max_loglike))
+        self.log.debug("Size of PCA cache: {}".format(self._size()))
 
         # Remove datapoints with a loglikelihood lower than the minimum loglikelihood + delta_loglike_cache
         self.dataframe_propose = self.dataframe[self.dataframe['loglike'] > max_loglike-self.delta_loglike_cache]
@@ -335,7 +332,7 @@ class PCACache(CobayaComponent):
                 # update the loglikelihood
                 for theory in state.keys():
                     if self.dataframe.loc[(my_hash, theory),'loglike'] < loglike:
-                        self.log.info("Update loglike")
+                        self.log.debug("Update loglike")
                         self.dataframe.loc[(my_hash, theory),'loglike'] = loglike
                 return False
             else:
