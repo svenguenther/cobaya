@@ -1185,12 +1185,11 @@ class PCA_GPEmulator(CobayaComponent):
             self.data_out_fit = self.data_out
             self._data_out_pca_fit = self._data_out_pca
 
-
-        self.train_indices, self.test_indices = train_test_split(np.arange(len(self.data_in_fit)), test_size=self.testset_fraction, random_state=42)
-
-        #self.log.info("Test set size: %d" % len(self.test_indices))
-        #self.log.info("Train set size: %d" % len(self.train_indices))
-
+        if  self.testset_fraction > 0.0:
+            self.train_indices, self.test_indices = train_test_split(np.arange(len(self.data_in_fit)), test_size=self.testset_fraction, random_state=42)
+        else:
+            self.train_indices = np.arange(len(self.data_in_fit))
+            self.test_indices = np.arange(len(self.data_in_fit))
 
         # Train the GP
         #self.log.info("Training GP")
