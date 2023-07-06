@@ -78,30 +78,34 @@ class EmulatorCache(CobayaComponent):
     
     # This function adds data to the cache
     def add_data(self, data, loglike):
+            
+        max_loglike = self.dataframes[self.theories[0]]['loglike'].max()
+
+        # Remove datapoints with a loglikelihood lower than the minimum loglikelihood + delta_loglike_cache
+        theory = list(self.dataframes.keys())[0]
+        self.dataframes[theory] = self.dataframes[self.theories[0]][self.dataframes[self.theories[0]]['loglike'] > max_loglike-self.delta_loglike_cache]
+
+        #self.log.info("Cache size")
+        #self.log.info(self._size())
 
         # First check whether the cache is full
         if self._size() >= self.N:
 
             # check proximity to existing data
             if self._check_proximity(data[self.theories[0]]['params']):
-                self.log.debug("Data too close to existing data")
+                #self.log.info("Data too close to existing data")
                 return False
 
             # Then check whether the new data is better than the worst data in the cache
             min_loglike = self.dataframes[self.theories[0]]['loglike'].min()
             max_loglike = self.dataframes[self.theories[0]]['loglike'].max()
 
-            self.log.debug("Min loglike in data cache: {}".format(min_loglike))
-            self.log.debug("Max loglike in data cache: {}".format(max_loglike))
+            #self.log.info("Min loglike in data cache: {}".format(min_loglike))
+            #self.log.info("Max loglike in data cache: {}".format(max_loglike))
 
-            # Remove datapoints with a loglikelihood lower than the minimum loglikelihood + delta_loglike_cache
-            self.dataframe_propose = self.dataframes[self.theories[0]][self.dataframes[self.theories[0]]['loglike'] > max_loglike-self.delta_loglike_cache]
-            theory = list(self.dataframes.keys())[0]
-            if self.dataframe_propose.shape[0]/len(self.theories) > 30: # Ensure that the cache is sufficiently full.
-                self.dataframes[theory] = self.dataframe_propose
 
-            self.log.debug("Min loglike in cache: {}".format(min_loglike))
-            self.log.debug("New loglike: {}".format(loglike))
+            #self.log.info("Min loglike in cache: {}".format(min_loglike))
+            #self.log.info("New loglike: {}".format(loglike))
             if loglike > min_loglike:
                 # Check whether the data point is already in the cache
                 new_hash = hash(tuple(data[self.theories[0]]['params']))
@@ -132,15 +136,8 @@ class EmulatorCache(CobayaComponent):
             min_loglike = self.dataframes[self.theories[0]]['loglike'].min()
             max_loglike = self.dataframes[self.theories[0]]['loglike'].max()
 
-            self.log.debug("Min loglike in data cache: {}".format(min_loglike))
-            self.log.debug("Max loglike in data cache: {}".format(max_loglike))
-
-            # Remove datapoints with a loglikelihood lower than the minimum loglikelihood + delta_loglike_cache
-            self.dataframe_propose = self.dataframes[self.theories[0]][self.dataframes[self.theories[0]]['loglike'] > max_loglike-self.delta_loglike_cache]
-            theory = list(self.dataframes.keys())[0]
-            if self.dataframe_propose.shape[0]/len(self.theories) > 30: # Ensure that the cache is sufficiently full.
-                self.dataframes[theory] = self.dataframe_propose
-
+            self.log.info("Min loglike in data cache: {}".format(min_loglike))
+            self.log.info("Max loglike in data cache: {}".format(max_loglike))
 
             # Check whether the data point is already in the cache
             new_hash = hash(tuple(data[self.theories[0]]['params']))
@@ -197,13 +194,13 @@ class EmulatorCache(CobayaComponent):
         # get the minimum distance
         min_dist = np.min(dist)
         self.log.debug("Minimum distance: {}".format(min_dist))
-        self.log.debug("Threshold distance: {}".format(self._proximity_threshold*neighbour_dist_mean))
-        self.log.debug("neighbour_dist_mean: {}".format(neighbour_dist_mean))
+        self.log.debug("Threshold distance: {}".format(self._proximity_threshold*self.neighbour_dist_mean))
+        self.log.debug("neighbour_dist_mean: {}".format(self.neighbour_dist_mean))
 
         self._N_dist_update_counter += 1
 
         # check whether the minimum distance is smaller than the threshold
-        if min_dist < self._proximity_threshold*neighbour_dist_mean:
+        if min_dist < self._proximity_threshold*self.neighbour_dist_mean:
             return True
         else:
             return False
@@ -314,15 +311,13 @@ class PCACache(CobayaComponent):
         min_loglike = self.dataframe['loglike'].min()
         max_loglike = self.dataframe['loglike'].max()
 
-        self.log.debug("Min loglike in PCA cache: {}".format(min_loglike))
-        self.log.debug("Max loglike in PCA cache: {}".format(max_loglike))
-        self.log.debug("Size of PCA cache: {}".format(self._size()))
+        #self.log.info("Min loglike in PCA cache: {}".format(min_loglike))
+        #self.log.info("Max loglike in PCA cache: {}".format(max_loglike))
+        #self.log.info("Size of PCA cache: {}".format(self._size()))
 
         # Remove datapoints with a loglikelihood lower than the minimum loglikelihood + delta_loglike_cache
-        self.dataframe_propose = self.dataframe[self.dataframe['loglike'] > max_loglike-self.delta_loglike_cache]
+        self.dataframe = self.dataframe[self.dataframe['loglike'] > max_loglike-self.delta_loglike_cache]
         theory = list(self.dataframe.keys())[0]
-        if self.dataframe_propose[theory].shape[0]/len(self.theories) > 30: # Ensure that the cache is sufficiently full.
-            self.dataframe = self.dataframe_propose
 
         #self.log.info(self.dataframe)
         if self._size() >= self.N:

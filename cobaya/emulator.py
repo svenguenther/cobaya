@@ -30,6 +30,10 @@ class quantity_GP:
         self.dim = dim
         self.n = n
 
+from matplotlib import rc
+rc('font', **{'family': 'serif', 'serif': ['Computer Modern'], 'size': 15})
+rc('text', usetex=True)
+
 
 #
 # This Class generates a PCA Guassian process emulator
@@ -63,7 +67,9 @@ class Emulator(CobayaComponent):
 
         self.postpone_learning = 0 if 'postpone_learning' not in args[1] else args[1]['postpone_learning']
 
-        self.learn_every = 200 if 'learn_every' not in args[1] else args[1]['learn_every']
+        self.min_training_size = 40 if 'min_training_size' not in args[1] else args[1]['min_training_size']
+
+        self.learn_every = 20 if 'learn_every' not in args[1] else args[1]['learn_every']
         self.precision = 1.e-1 if 'precision' not in args[1] else args[1]['precision'] # This is basicially the minimal error of the emulator
 
         # This is relevat error criterion if we leave the vicinity of the training set. It scales the allowed error linear in log10 of the loglike distance
@@ -71,6 +77,8 @@ class Emulator(CobayaComponent):
         self.precision_quadratic = 0.0 if 'precision_quadratic' not in args[1] else args[1]['precision_quadratic']
 
         self._max_loglike = -np.inf # This is the minimal loglike value we witnessed so far
+
+        self.masking = {} if 'masking' not in args[1] else args[1]['masking']
 
 
         self.N_validation_states = 5 if 'N_validation_states' not in args[1] else args[1]['N_validation_states']
@@ -96,6 +104,8 @@ class Emulator(CobayaComponent):
         self.counter_emulator_used = 0
         self.counter_emulator_not_used = 0
 
+        self.min_cache_size = 100 if 'min_cache_size' not in args[1] else args[1]['min_cache_size']
+
         # During burnin phase we use a reduced emulator size
         self._in_burnin_phase = True
         self._last_loglike_update = 0
@@ -115,7 +125,10 @@ class Emulator(CobayaComponent):
         # check if log file exists and delete it
         # if self.debug:
         if os.path.exists('log_file.txt'):
-            os.remove('log_file.txt')
+            try:
+                os.remove('log_file.txt')
+            except:
+                pass
 
         self._gp_initial_minimization_states = 40 if 'gp_initial_minimization_states' not in args[1] else args[1]['gp_initial_minimization_states']
         self._gp_minimization_states = 5 if 'gp_minimization_states' not in args[1] else args[1]['gp_minimization_states']
@@ -130,8 +143,9 @@ class Emulator(CobayaComponent):
         # Create a cache instance for the PCA cache
         self.pca_cache = PCACache(
             cache_size = 200 if 'pca_cache_size' not in args[1] else args[1]['pca_cache_size'],
-            delta_loglike_cache = 100 if 'delta_loglike_cache' not in args[1] else args[1]['delta_loglike_cache'],
+            delta_loglike_cache = 300 if 'delta_loglike_pcacache' not in args[1] else args[1]['delta_loglike_pcacache'],
         )
+
 
         self.parameter_dimension = {}
 
@@ -361,7 +375,7 @@ class Emulator(CobayaComponent):
 
 
         # Should we train the emulator? Then train I guess 
-        if ((self.data_cache._newly_added_points+1) % self.learn_every == 0) and (self.counter_emulator_not_used>self.postpone_learning):
+        if (((self.data_cache._newly_added_points+1) % self.learn_every == 0) and (self.counter_emulator_not_used>self.postpone_learning) and (self.data_cache._size() >= self.min_training_size)):
             self.log.debug("_train_emulator")
             if self.in_validation == False:
                 self.write_log_step('train')
@@ -479,6 +493,11 @@ class Emulator(CobayaComponent):
                         if k == name:
                             #self.log.info("Setting %s to %s" % (k, pred))
                             self.state[theory][key][k] = pred
+
+                            if k in ['tt','te','ee','pp']:
+                                self.state[theory][key][k][:1] = 0.0
+        
+        #self.log.info(self.state)
         
         self.timings['evaluating'] += time.time()-t_start
 
@@ -717,6 +736,12 @@ class Emulator(CobayaComponent):
                     for key in list(cs[theory][quant].keys()):
                         if key in self.must_provide[theory][quant].keys():
                             cs[theory][key] = cs[theory][quant][key]
+
+                            # apply masking
+                            if key in self.masking.keys():
+                                cs[theory][key][:self.masking[key][0]] = 0
+                                cs[theory][key][self.masking[key][1]:] = 0
+                            
                     del cs[theory][quant]
 
         return cs
@@ -982,7 +1007,7 @@ class PCA_GPEmulator(CobayaComponent):
             residuals = self.data_out - reconst
 
             # get the variance of the residuals and unnormalize
-            self._pca_residual_std = np.std(residuals, axis=0)*self._out_stds
+            self._pca_residual_std = np.percentile(residuals, 95, axis=0)*self._out_stds
 
             #self.log.info('residual variance')
             #self.log.info(self._pca_residual_std)
@@ -1005,23 +1030,40 @@ class PCA_GPEmulator(CobayaComponent):
     def _create_kernel(self, theta_boundary_scale= 3.0, update_mask = False):
         #self.log.info("Creating kernel")
 
+        max_val = 8.0
+
+        ini_bounds = []
+        for i in range(self.in_dim):
+            ini_bounds.append([np.exp(-max_val), np.exp(max_val)])
+
         # create kernel
         a = ([0.01,5.0],[0.01,5.0],[0.01,5.0],[0.01,5.0],[0.01,5.0],[0.01,5.0])
+
+        if theta_boundary_scale == 0.0:
+            pass
+        else:
+            self._gps = None
+
+        
+
         # if we have already some working kernels, we can help ourself by constraing the new ones to be similar
         if self._gps is None:
             if self.n_pca is not None:
                 #self._kernels = [ConstantKernel() * RBF() for i in range(self.n_pca)]
-                self._kernels = [ConstantKernel() * RBF(np.ones(self.in_dim)) for i in range(self.n_pca)]
+                #self._kernels = [ConstantKernel() * RBF(np.ones(self.in_dim)) + WhiteKernel() for i in range(self.n_pca)]
+                self._kernels = [ConstantKernel( constant_value_bounds=(np.exp(-max_val), np.exp(max_val)) ) * RBF(np.ones(self.in_dim), tuple(ini_bounds) ) for i in range(self.n_pca)]
             else:
                 #self._kernels = [ConstantKernel() * RBF() for i in range(self.out_dim)]
-                self._kernels = [ConstantKernel() * RBF(np.ones(self.in_dim)) for i in range(self.out_dim)]
+                #self._kernels = [ConstantKernel() * RBF(np.ones(self.in_dim)) + WhiteKernel() for i in range(self.out_dim)]
+                self._kernels = [ConstantKernel( constant_value_bounds=(np.exp(-max_val), np.exp(max_val)) ) * RBF(np.ones(self.in_dim), tuple(ini_bounds) ) for i in range(self.out_dim)]
         else:
             thetas= []   
             bounds = []
             for i,GP in enumerate(self._gps):
 
+                # scale
                 thetas.append([GP.kernel_.theta[0]])
-                bounds.append([[max(np.exp(GP.kernel_.theta[0]-theta_boundary_scale),np.exp(-11.0)), min(np.exp(GP.kernel_.theta[0]+theta_boundary_scale),np.exp(11.0))]])
+                bounds.append([[max(np.exp(GP.kernel_.theta[0]-theta_boundary_scale),np.exp(-max_val)), min(np.exp(GP.kernel_.theta[0]+theta_boundary_scale),np.exp(max_val))]])
                 
 
                 # veto parameters that are not relevant for the kernel
@@ -1034,17 +1076,21 @@ class PCA_GPEmulator(CobayaComponent):
                                 _+=1              
                             else:
                                 thetas[i].append(GP.kernel_.theta[_+1])
-                                bounds[i].append([max(np.exp(GP.kernel_.theta[_+1]-theta_boundary_scale),np.exp(-11.0)), min(np.exp(GP.kernel_.theta[_+1]+theta_boundary_scale),np.exp(11.0))])
+                                bounds[i].append([max(np.exp(GP.kernel_.theta[_+1]-theta_boundary_scale),np.exp(-max_val)), min(np.exp(GP.kernel_.theta[_+1]+theta_boundary_scale),np.exp(max_val))])
                                 _+=1              
                     else:
                         # if the previous kernel had the same number of parameters, we can use the same
                         if len(GP.kernel_.theta)==self.in_dim+1:
                             thetas[i].append(GP.kernel_.theta[j+1])
-                            bounds[i].append([max(np.exp(GP.kernel_.theta[j+1]-theta_boundary_scale),np.exp(-11.0)), min(np.exp(GP.kernel_.theta[j+1]+theta_boundary_scale),np.exp(11.0))])
+                            bounds[i].append([max(np.exp(GP.kernel_.theta[j+1]-theta_boundary_scale),np.exp(-max_val)), min(np.exp(GP.kernel_.theta[j+1]+theta_boundary_scale),np.exp(max_val))])
                         else:
                             thetas[i] = np.append(thetas[i],1.0)
-                            bounds[i] = np.append(bounds[i],np.array([[np.exp(-11.0), np.exp(11.0)]]), axis=0)
+                            bounds[i] = np.append(bounds[i],np.array([[np.exp(-max_val), np.exp(max_val)]]), axis=0)
                         self._in_mask[i,j] = True
+
+                # add the white noise parameter
+                #thetas[i] = np.append(thetas[i],GP.kernel_.theta[-1])
+                #bounds[i] = np.append(bounds[i] ,np.array([[max(np.exp(GP.kernel_.theta[-1]-theta_boundary_scale),np.exp(-11.0)), min(np.exp(GP.kernel_.theta[-1]+theta_boundary_scale),np.exp(11.0))]]), axis=0)
 
                 # transform the input mask to indices
                 self._in_mask_indices[i] = np.where(self._in_mask[i])[0]
@@ -1073,18 +1119,20 @@ class PCA_GPEmulator(CobayaComponent):
                 if self.n_pca is not None:
                     for i in range(self.n_pca):
                         for j in range(len(thetas[i])):
-                            bounds[i][j] = [np.exp(thetas[i][j]),np.exp(thetas[i][j])]
+                            bounds[i][j] = np.array([np.exp(thetas[i][j]),np.exp(thetas[i][j])])
                 else:
                     for i in range(self.out_dim):
                         for j in range(len(thetas[i])):
-                            bounds[i][j] = [np.exp(thetas[i][j]),np.exp(thetas[i][j])]
+                            bounds[i][j] = np.array([np.exp(thetas[i][j]),np.exp(thetas[i][j])])
                     
 
             if self.n_pca is not None:
-                self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1:]),length_scale_bounds=tuple(bounds[i][1:])) for i in range(self.n_pca)]
+                #self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1:-1]),length_scale_bounds=tuple(bounds[i][1:-1]))  + WhiteKernel(np.exp(thetas[i][-1]),noise_level_bounds=tuple(bounds[i][-1])) for i in range(self.n_pca)]
+                self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1:]),length_scale_bounds=tuple(bounds[i][1:]))  for i in range(self.n_pca)]
             else:
-                self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1:]),length_scale_bounds=tuple(bounds[i][1:])) for i in range(self.out_dim)]
-        
+                #self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1:-1]),length_scale_bounds=tuple(bounds[i][1:-1]))  + WhiteKernel(np.exp(thetas[i][-1]),noise_level_bounds=tuple(bounds[i][-1])) for i in range(self.out_dim)]
+                self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1:]),length_scale_bounds=tuple(bounds[i][1:]))  for i in range(self.out_dim)]
+
 
         #self.log.info('kernels done')
         
@@ -1102,55 +1150,57 @@ class PCA_GPEmulator(CobayaComponent):
             if self.n_pca is not None:
                 #self.log.info('self.n_pca')
                 #self.log.info(self.n_pca)
-                self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts_initial, alpha=1.e-8) for i in range(self.n_pca)]
+                self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts_initial, alpha=1.e-10) for i in range(self.n_pca)]
 
                 if self.debug:
-                    #do some GP input plots for PCA
-                    for i in range(self.n_pca):
-                        for j in range(self.in_dim):
-                            fig,ax = plt.subplots()
-                            ax.scatter(self.data_in[:,j],self._data_out_pca[:,i])
-                            ax.set_xlabel('input')
-                            ax.set_ylabel('PCA component %d' % i)
-                            fig.savefig('./plots_pca_gp/%s_PCA_%d_%d.png' % (self.name,i,j))
+                    if False:
+                        #do some GP input plots for PCA
+                        for i in range(self.n_pca):
+                            for j in range(self.in_dim):
+                                fig,ax = plt.subplots()
+                                ax.scatter(self.data_in[:,j],self._data_out_pca[:,i])
+                                ax.set_xlabel('input')
+                                ax.set_ylabel('PCA component %d' % i)
+                                fig.savefig('./plots_pca_gp/%s_PCA_%d_%d.png' % (self.name,i,j))
 
-                    plt.figure().clear()
-                    plt.close('all')
-                    plt.close()
-                    plt.cla()
-                    plt.clf()
-                    gc.collect()
+                        plt.figure().clear()
+                        plt.close('all')
+                        plt.close()
+                        plt.cla()
+                        plt.clf()
+                        gc.collect()
 
 
 
             else:
 
-                self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts_initial, alpha=1.e-8) for i in range(self.out_dim)]
+                self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts_initial, alpha=1.e-10) for i in range(self.out_dim)]
         else:
             if self.n_pca is not None:
-                self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts, alpha=1.e-8) for i in range(self.n_pca)]
+                self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts, alpha=1.e-10) for i in range(self.n_pca)]
 
 
                 if self.debug:
-                    #do some GP input plots for PCA
-                    for i in range(self.n_pca):
-                        for j in range(self.in_dim):
-                            fig,ax = plt.subplots()
-                            ax.scatter(self.data_in[:,j],self._data_out_pca[:,i])
-                            ax.set_xlabel('input')
-                            ax.set_ylabel('PCA component %d' % i)
-                            fig.savefig('./plots_pca_gp/%s_PCA_%d_%d.png' % (self.name,i,j))
+                    if False:
+                        #do some GP input plots for PCA
+                        for i in range(self.n_pca):
+                            for j in range(self.in_dim):
+                                fig,ax = plt.subplots()
+                                ax.scatter(self.data_in[:,j],self._data_out_pca[:,i])
+                                ax.set_xlabel('input')
+                                ax.set_ylabel('PCA component %d' % i)
+                                fig.savefig('./plots_pca_gp/%s_PCA_%d_%d.png' % (self.name,i,j))
 
-                    plt.figure().clear()
-                    plt.close('all')
-                    plt.close()
-                    plt.cla()
-                    plt.clf()
-                    gc.collect()
+                        plt.figure().clear()
+                        plt.close('all')
+                        plt.close()
+                        plt.cla()
+                        plt.clf()
+                        gc.collect()
 
             else:
 
-                self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts, alpha=1.e-8) for i in range(self.out_dim)]
+                self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts, alpha=1.e-10) for i in range(self.out_dim)]
 
 
         # here we check the size of the dataset. If it is larger than we require to fit the kernels,
@@ -1239,7 +1289,7 @@ class PCA_GPEmulator(CobayaComponent):
 
 
         # use reduced input for the next GP
-        self._use_reduced_input = True
+        self._use_reduced_input = False#True
 
         #if self.debug:
         #    for i,GP in enumerate(self._gps):
@@ -1313,7 +1363,6 @@ class PCA_GPEmulator(CobayaComponent):
                     ax.errorbar(self._data_out_pca_fit[self.train_indices,i], self._data_out_pca_fit[self.train_indices,i]-(self._data_out_pca_train[:,i]-self._out_means_pca[i])/self._out_stds_pca[i], yerr=(self._data_out_pca_train_std[:,i]-self._out_means_pca[i])/self._out_stds_pca[i], fmt='o', label='Predicted')
                     ax.set_xlabel('true')
                     ax.set_ylabel('predicted - true')
-                    ax.set_title(self.name)
                     ax.grid(True)
                     ax.legend()
                     fig.savefig('./plots/train_'+self.name+'_'+str(i)+'_gp.png')
@@ -1323,10 +1372,10 @@ class PCA_GPEmulator(CobayaComponent):
                     ax.errorbar(self.data_out_fit[self.train_indices,i], self.data_out_fit[self.train_indices,i]-self._data_out_train[:,i], yerr=self._data_out_train_std[:,i], fmt='o', label='Predicted')
                     ax.set_xlabel('true')
                     ax.set_ylabel('predicted - true')
-                    ax.set_title(self.name)
                     ax.grid(True)
                     ax.legend()
                     fig.savefig('./plots/train_'+self.name+'_'+str(i)+'_gp.png')
+
 
             plt.figure().clear()
             plt.close('all')
@@ -1369,34 +1418,49 @@ class PCA_GPEmulator(CobayaComponent):
 
                 index = self.test_indices[rel_index]
 
+                cut_index = 2
+
+
                 for ind in rel_index:
-                    fig,ax = plt.subplots(3,sharex=True,figsize=(10,10))
-                    ax[2].set_xlabel('ell')
+                    fig,ax = plt.subplots(3,sharex=True,figsize=(8,8))
+                    ax[2].set_xlabel(r'$\ell$')
                     ax[0].set_ylabel(self.name)
-                    ax[0].set_title(self.name + ' ' + str(ind))
-                    ax[0].plot(np.arange(self.out_dim),np.arange(self.out_dim)*np.arange(self.out_dim)*original_data[ind], label='true')
-                    ax[0].plot(np.arange(self.out_dim),np.arange(self.out_dim)*np.arange(self.out_dim)*test_data[ind], label='predicted')
-                    ax[0].fill_between(np.arange(self.out_dim), np.arange(self.out_dim)*np.arange(self.out_dim)*(test_data[ind]-test_unc[ind]), np.arange(self.out_dim)*np.arange(self.out_dim)*(test_data[ind]+test_unc[ind]), alpha=0.5, label='SAMPLING uncertainty')
-                    ax[0].fill_between(np.arange(self.out_dim), np.arange(self.out_dim)*np.arange(self.out_dim)*(test_data[ind]-self._pca_residual_std), np.arange(self.out_dim)*np.arange(self.out_dim)*(test_data[ind]+self._pca_residual_std),color='orange', alpha=0.5, label='PCA uncertainty')
+                    if self.name in ['pp']:
+                        ax[0].plot(np.arange(self.out_dim)[cut_index:],(np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*original_data[ind][cut_index:], label='CLASS')
+                        ax[0].plot(np.arange(self.out_dim)[cut_index:],(np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*test_data[ind][cut_index:], label='emulated')
+                        ax[0].fill_between(np.arange(self.out_dim)[cut_index:], (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(test_data[ind][cut_index:]-test_unc[ind][cut_index:]), (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(test_data[ind][cut_index:]+test_unc[ind][cut_index:]), alpha=0.5, label='SAMPLING uncertainty')
+                        ax[0].fill_between(np.arange(self.out_dim)[cut_index:], (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(test_data[ind][cut_index:]-self._pca_residual_std[cut_index:]), (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(test_data[ind][cut_index:]+self._pca_residual_std[cut_index:]),color='orange', alpha=0.5, label='PCA uncertainty')
+                    else:
+                        ax[0].plot(np.arange(self.out_dim)[cut_index:],np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*original_data[ind][cut_index:], label='CLASS')
+                        ax[0].plot(np.arange(self.out_dim)[cut_index:],np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*test_data[ind][cut_index:], label='emulated')
+                        ax[0].fill_between(np.arange(self.out_dim)[cut_index:], np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(test_data[ind][cut_index:]-test_unc[ind][cut_index:]), np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(test_data[ind][cut_index:]+test_unc[ind][cut_index:]), alpha=0.5, label='SAMPLING uncertainty')
+                        ax[0].fill_between(np.arange(self.out_dim)[cut_index:], np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(test_data[ind][cut_index:]-self._pca_residual_std[cut_index:]), np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(test_data[ind][cut_index:]+self._pca_residual_std[cut_index:]),color='orange', alpha=0.5, label='PCA uncertainty')
                     ax[0].grid(True)
                     ax[0].legend()
-                    ax[0].set_ylabel('l*(l+1)*C_l')
-                    ax[1].plot(np.arange(self.out_dim),np.arange(self.out_dim)*np.arange(self.out_dim)*(original_data[ind]-test_data[ind]), label='difference')
-                    ax[1].fill_between(np.arange(self.out_dim), np.arange(self.out_dim)*np.arange(self.out_dim)*(-test_data[ind]-test_unc[ind]+original_data[ind]), np.arange(self.out_dim)*np.arange(self.out_dim)*(-test_data[ind]+test_unc[ind]+original_data[ind]), alpha=0.5, label='SAMPLING uncertainty')
-                    
-                    ax[1].fill_between(np.arange(self.out_dim), np.arange(self.out_dim)*np.arange(self.out_dim)*(-test_data[ind]-self._pca_residual_std+original_data[ind]), np.arange(self.out_dim)*np.arange(self.out_dim)*(-test_data[ind]+self._pca_residual_std+original_data[ind]),color='orange' ,alpha=0.5, label='PCA uncertainty')
+                    ax[0].set_ylabel(r'$D^{TT}_{\ell}$')
+                    if self.name in ['pp']:
+                        ax[1].plot(np.arange(self.out_dim)[cut_index:],(np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(original_data[ind][cut_index:]-test_data[ind][cut_index:]), label='residual')
+                        ax[1].fill_between(np.arange(self.out_dim)[cut_index:], (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(-test_data[ind][cut_index:]-test_unc[ind][cut_index:]+original_data[ind][cut_index:]), (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(-test_data[ind][cut_index:]+test_unc[ind][cut_index:]+original_data[ind][cut_index:]), alpha=0.5, label='SAMPLING uncertainty')
+                        ax[1].fill_between(np.arange(self.out_dim)[cut_index:], (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(-test_data[ind][cut_index:]-self._pca_residual_std[cut_index:]+original_data[ind][cut_index:]), (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(-test_data[ind][cut_index:]+self._pca_residual_std[cut_index:]+original_data[ind][cut_index:]),color='orange' ,alpha=0.5, label='PCA uncertainty')
+                    else:
+                        ax[1].plot(np.arange(self.out_dim)[cut_index:],np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(original_data[ind][cut_index:]-test_data[ind][cut_index:]), label='residual')
+                        ax[1].fill_between(np.arange(self.out_dim)[cut_index:], np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(-test_data[ind][cut_index:]-test_unc[ind][cut_index:]+original_data[ind][cut_index:]), np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(-test_data[ind][cut_index:]+test_unc[ind][cut_index:]+original_data[ind][cut_index:]), alpha=0.5, label='SAMPLING uncertainty')
+                        ax[1].fill_between(np.arange(self.out_dim)[cut_index:], np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(-test_data[ind][cut_index:]-self._pca_residual_std[cut_index:]+original_data[ind][cut_index:]), np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(-test_data[ind][cut_index:]+self._pca_residual_std[cut_index:]+original_data[ind][cut_index:]),color='orange' ,alpha=0.5, label='PCA uncertainty')
                     ax[1].grid(True)
-                    ax[1].legend()
-                    ax[1].set_ylabel('l*(l+1)*delta C_l')
-                    cv = original_data[ind]/np.sqrt(np.arange(self.out_dim)+0.5)
+                    ax[1].legend(loc = 'upper right')
+                    ax[1].set_ylabel(r'$\triangle D^{TT}_{\ell}$')
+                    cv = original_data[ind][cut_index:]/np.sqrt(np.arange(self.out_dim)[cut_index:]+0.5)
 
-                    ax[2].set_ylabel('delta C_l/cosmic variance')
-                    ax[2].plot(np.arange(self.out_dim),(original_data[ind]-test_data[ind])/cv, label='difference')
-                    ax[2].fill_between(np.arange(self.out_dim), (-test_data[ind]-test_unc[ind]+original_data[ind])/cv, (-test_data[ind]+test_unc[ind]+original_data[ind])/cv, alpha=0.5, label='SAMPLING uncertainty')
+                    ax[2].set_ylabel(r'$\triangle D^{TT}_{\ell}/CV$')
+                    ax[2].plot(np.arange(self.out_dim)[cut_index:],(original_data[ind][cut_index:]-test_data[ind][cut_index:])/cv, label='residual')
+                    ax[2].fill_between(np.arange(self.out_dim)[cut_index:], (-test_data[ind][cut_index:]-test_unc[ind][cut_index:]+original_data[ind][cut_index:])/cv, (-test_data[ind][cut_index:]+test_unc[ind][cut_index:]+original_data[ind][cut_index:])/cv, alpha=0.5, label='SAMPLING uncertainty')
                     
-                    ax[2].fill_between(np.arange(self.out_dim), (-test_data[ind]-self._pca_residual_std+original_data[ind])/cv, (-test_data[ind]+self._pca_residual_std+original_data[ind])/cv,color='orange', alpha=0.5, label='PCA uncertainty')
+                    ax[2].fill_between(np.arange(self.out_dim)[cut_index:], (-test_data[ind][cut_index:]-self._pca_residual_std[cut_index:]+original_data[ind][cut_index:])/cv, (-test_data[ind][cut_index:]+self._pca_residual_std[cut_index:]+original_data[ind][cut_index:])/cv,color='orange', alpha=0.5, label='PCA uncertainty')
                     ax[2].grid(True)
-                    ax[2].legend()
+                    #ax[2].legend()
+
+                    # tight layout
+                    fig.tight_layout()
 
                     fig.savefig('./plots/test_'+self.name+'_'+str(ind)+'_gp_backtrafo.pdf')
  
@@ -1406,7 +1470,6 @@ class PCA_GPEmulator(CobayaComponent):
                 plt.cla()
                 plt.clf()
                 gc.collect()
-
 
 
         if self.timer:
@@ -1428,9 +1491,9 @@ class PCA_GPEmulator(CobayaComponent):
         #self.log.info("Training GP on additional data")
 
         if self.n_pca is not None:
-            self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=0, alpha=1.e-8) for i in range(self.n_pca)]
+            self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=0, alpha=1.e-10) for i in range(self.n_pca)]
         else:
-            self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=0, alpha=1.e-8) for i in range(self.out_dim)]
+            self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=0, alpha=1.e-10) for i in range(self.out_dim)]
 
         for i,GP in enumerate(self._gps):
             # Train the GP on all data
