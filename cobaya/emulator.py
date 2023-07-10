@@ -113,12 +113,6 @@ class Emulator(CobayaComponent):
         self.counter_emulator_used = 0
         self.counter_emulator_not_used = 0
 
-        # During burnin phase we use a reduced emulator size
-        self._in_burnin_phase = True
-        self._last_loglike_update = 0
-        self._N_burnin = 40 if 'training_size_burnin' not in args[1] else args[1]['training_size_burnin']
-        self._burnin_trigger = 50 if 'burnin_trigger' not in args[1] else args[1]['burnin_trigger']
-
         self._gp_fit_size = 100 if 'gp_fit_size' not in args[1] else args[1]['gp_fit_size']
 
         self.last_evaluated_state = {}
@@ -348,13 +342,6 @@ class Emulator(CobayaComponent):
         if self.timer:
             self.timer.start()
 
-        # decide if we are still in burnin phase
-        if ((self.counter_emulator_not_used+self.counter_emulator_used)>self.postpone_learning+self._burnin_trigger):
-            if (self.evalution_counter - self._last_loglike_update) > self._burnin_trigger:
-                if self._in_burnin_phase:
-                    self._in_burnin_phase = False
-                    self.write_log_step('burnin_end')
-
         #if (self.evalution_counter%100 == 0):
         if not self.in_validation:
             if ((self.counter_emulator_not_used+self.counter_emulator_used)%10 == 0):
@@ -552,10 +539,7 @@ class Emulator(CobayaComponent):
         for theory in self.theories:
             for name, GP in self.predictors[theory].items():
                 # Get the data from the cache
-                if self._in_burnin_phase:
-                    N = self._N_burnin
-                else:
-                    N = self.data_cache._size()
+                N = self.data_cache._size()
                 data = self.data_cache.get_data(theory, keys = ['params',name,'loglike'], N=N)
 
                 # Load the data into the GP
@@ -636,7 +620,6 @@ class Emulator(CobayaComponent):
         # update min loglike
         if (loglike > self._max_loglike) and (loglike != 0.0):
             self._max_loglike = loglike
-            self._last_loglike_update = self.counter_emulator_not_used+self.counter_emulator_used
 
         # dont add very low likelihood points. Possibly -inf 
         if loglike < -1.e+20:
@@ -1258,6 +1241,9 @@ class PCA_GPEmulator(CobayaComponent):
         else:
             self.train_indices = np.arange(len(self.data_in_fit))
             self.test_indices = np.arange(len(self.data_in_fit))
+
+        print("Size train indices", len(self.train_indices))
+        print("Size train indices", len(self.test_indices))
 
         # Train the GP
         #self.log.info("Training GP")
