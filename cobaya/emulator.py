@@ -56,6 +56,15 @@ class Emulator(CobayaComponent):
     precision: float
 
     def __init__(self, *args, **kwargs):
+
+        import warnings
+        from sklearn.exceptions import DataConversionWarning
+        warnings.filterwarnings(action='ignore', category=DataConversionWarning)
+        from sklearn.exceptions import ConvergenceWarning
+        warnings.filterwarnings(action='ignore', category=ConvergenceWarning)
+
+
+
         self.set_logger("emulator")
         self._emulator = None
         self._emulator_ready = False
@@ -67,7 +76,7 @@ class Emulator(CobayaComponent):
 
         self.postpone_learning = 0 if 'postpone_learning' not in args[1] else args[1]['postpone_learning']
 
-        self.min_training_size = 40 if 'min_training_size' not in args[1] else args[1]['min_training_size']
+        self.min_training_size = 80 if 'min_training_size' not in args[1] else args[1]['min_training_size']
 
         self.learn_every = 20 if 'learn_every' not in args[1] else args[1]['learn_every']
         self.precision = 1.e-1 if 'precision' not in args[1] else args[1]['precision'] # This is basicially the minimal error of the emulator
@@ -85,7 +94,7 @@ class Emulator(CobayaComponent):
 
         self.testset_fraction = 0.1 if 'testset_fraction' not in args[1] else args[1]['testset_fraction']
 
-        self.N_pca_components = {} if 'N_pca' not in args[1] else args[1]['N_pca']
+        self.N_pca_components = {} if 'N_pca_components' not in args[1] else args[1]['N_pca_components']
         self.N_pca_components_default = 15 if 'N_pca_default' not in args[1] else args[1]['N_pca_default']
 
         self.validation_loglikes = np.zeros(self.N_validation_states)
@@ -103,8 +112,6 @@ class Emulator(CobayaComponent):
         self.debug = False if 'debug' not in args[1] else args[1]['debug']
         self.counter_emulator_used = 0
         self.counter_emulator_not_used = 0
-
-        self.min_cache_size = 100 if 'min_cache_size' not in args[1] else args[1]['min_cache_size']
 
         # During burnin phase we use a reduced emulator size
         self._in_burnin_phase = True
@@ -361,9 +368,6 @@ class Emulator(CobayaComponent):
             self.write_log_step('not_used')
             return None, True
         
-        #self.log.info("(self.data_cache._newly_added_points+1) self.learn_every")
-        #self.log.info((self.data_cache._newly_added_points+1) % self.learn_every)
-
         # Should we train the emulator? Then first load data to GPs
         #if ((self.data_cache._newly_added_points+1) % self.learn_every == 0) and (self.counter_emulator_not_used>self.postpone_learning):
         #    self.log.info("_load_data_to_GP")
@@ -373,16 +377,25 @@ class Emulator(CobayaComponent):
 
         # Do some PCA validation TODO
 
-
         # Should we train the emulator? Then train I guess 
-        if (((self.data_cache._newly_added_points+1) % self.learn_every == 0) and (self.counter_emulator_not_used>self.postpone_learning) and (self.data_cache._size() >= self.min_training_size)):
-            self.log.debug("_train_emulator")
-            if self.in_validation == False:
-                self.write_log_step('train')
-                t_start = time.time()
-                self._load_data_to_GP(renormalize=True)
-                self._train_emulator()
-                self.timings['training'] += time.time()-t_start
+        if not self._emulator_trained:
+            if (self.counter_emulator_not_used>self.postpone_learning) and (self.data_cache._size() >= self.min_training_size):
+                self.log.debug("_train_emulator")
+                if self.in_validation == False:
+                    self.write_log_step('train')
+                    t_start = time.time()
+                    self._load_data_to_GP(renormalize=True)
+                    self._train_emulator()
+                    self.timings['training'] += time.time()-t_start
+        else:
+            if (self.data_cache._newly_added_points+1) % self.learn_every == 0 :
+                self.log.debug("_train_emulator")
+                if self.in_validation == False:
+                    self.write_log_step('train')
+                    t_start = time.time()
+                    self._load_data_to_GP(renormalize=True)
+                    self._train_emulator()
+                    self.timings['training'] += time.time()-t_start
 
 
         # If we are not ready yet, we cannot calculate anything
@@ -838,14 +851,19 @@ class PCA_GPEmulator(CobayaComponent):
     def _determine_n_pca(self):
         if self.out_dim == 1:
             self.n_pca = None
-        elif self.out_dim > 1000:
+        elif self.out_dim > 100:
             # some handwaving here. This is not really tested TODO: test this
+            print(self.N_pca_components)
+            print(self.N_pca_components.keys())
             if self.name in self.N_pca_components.keys():
                 self.n_pca = self.N_pca_components[self.name]
             else:
                 self.n_pca = self.N_pca_components_default
         else:
             self.n_pca = None#self.out_dim
+
+        print(self.name)
+        print(self.n_pca)
 
         return True
     
@@ -1322,7 +1340,7 @@ class PCA_GPEmulator(CobayaComponent):
             if self.n_pca is not None:
                 for i in range(len(self._data_out_pca_test[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
-                    ax.errorbar(self._data_out_pca_fit[self.test_indices,i], self._data_out_pca_fit[self.test_indices,i]-(self._data_out_pca_test[:,i]-self._out_means_pca[i])/self._out_stds_pca[i], yerr=(self._data_out_pca_test_std[:,i]-self._out_means_pca[i])/self._out_stds_pca[i], fmt='o', label='Predicted')
+                    ax.errorbar(self._data_out_pca_fit[self.test_indices,i], self._data_out_pca_fit[self.test_indices,i]-(self._data_out_pca_test[:,i]-self._out_means_pca[i])/self._out_stds_pca[i], yerr=(self._data_out_pca_test_std[:,i])/self._out_stds_pca[i], fmt='o', label='Predicted')
                     ax.set_xlabel('true')
                     ax.set_ylabel('predicted - true')
                     ax.set_title(self.name)
@@ -1360,7 +1378,7 @@ class PCA_GPEmulator(CobayaComponent):
             if self.n_pca is not None:
                 for i in range(len(self._data_out_pca_train[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
-                    ax.errorbar(self._data_out_pca_fit[self.train_indices,i], self._data_out_pca_fit[self.train_indices,i]-(self._data_out_pca_train[:,i]-self._out_means_pca[i])/self._out_stds_pca[i], yerr=(self._data_out_pca_train_std[:,i]-self._out_means_pca[i])/self._out_stds_pca[i], fmt='o', label='Predicted')
+                    ax.errorbar(self._data_out_pca_fit[self.train_indices,i], self._data_out_pca_fit[self.train_indices,i]-(self._data_out_pca_train[:,i]-self._out_means_pca[i])/self._out_stds_pca[i], yerr=(self._data_out_pca_train_std[:,i])/self._out_stds_pca[i], fmt='o', label='Predicted')
                     ax.set_xlabel('true')
                     ax.set_ylabel('predicted - true')
                     ax.grid(True)

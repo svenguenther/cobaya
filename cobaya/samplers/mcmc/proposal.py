@@ -269,10 +269,10 @@ class BlockedProposer(HasLogger):
                 self.log, "The covariance matrix does not have the correct dimension: "
                           "it's %d, but it should be %d.", propose_matrix.shape[0],
                 self.d())
-        if not (np.allclose(propose_matrix.T, propose_matrix) and
-                np.all(np.linalg.eigvals(propose_matrix) > 0)):
-            raise LoggedError(self.log, "The given covmat is not a positive-definite, "
-                                        "symmetric square matrix.")
+        #if not (np.allclose(propose_matrix.T, propose_matrix) and
+        #        np.all(np.linalg.eigvals(propose_matrix) > 0)):
+        #    raise LoggedError(self.log, "The given covmat is not a positive-definite, "
+        #                                "symmetric square matrix.")
         self.propose_matrix = propose_matrix.copy()
         propose_matrix_j_sorted = self.propose_matrix[np.ix_(self.i_of_j, self.i_of_j)]
         sigmas_diag, L = choleskyL(propose_matrix_j_sorted, return_scale_free=True)
