@@ -1326,16 +1326,19 @@ class PCA_GPEmulator(CobayaComponent):
 
 
         if self.debug:
-
+            N_samples = 20
 
             # TEST SET!!!!!!!!!!!!!!!
             # Test the GP by predicting the test set
             self.log.info("Testing GP")
             if self.n_pca is not None:
                 self._data_out_pca_test = np.zeros((len(self.test_indices), self.n_pca))
+                self._data_out_pca_test_samples = np.zeros((len(self.test_indices), self.n_pca, N_samples))
                 self._data_out_pca_test_std = np.zeros((len(self.test_indices), self.n_pca))
                 for i,GP in enumerate(self._gps):
                     self._data_out_pca_test[:,i], self._data_out_pca_test_std[:,i] = GP.predict(self.data_in_fit[np.ix_(self.test_indices, self._in_mask_indices[i])], return_std=True)
+                    for j in range(N_samples):
+                        self._data_out_pca_test_samples[:,i,j] = GP.sample_y(self.data_in_fit[np.ix_(self.test_indices, self._in_mask_indices[i])], random_state=None)[:,0]*self._out_stds_pca[i]+self._out_means_pca[i]
                     self._data_out_pca_test[:,i] = self._data_out_pca_test[:,i]*self._out_stds_pca[i]+self._out_means_pca[i]
                     self._data_out_pca_test_std[:,i] = self._data_out_pca_test_std[:,i]*self._out_stds_pca[i]
             else:
@@ -1417,18 +1420,11 @@ class PCA_GPEmulator(CobayaComponent):
                 test_data = np.zeros(original_data.shape)
                 test_unc = np.zeros(original_data.shape)
 
-                #self.log.info('original_data.shape')
-                #self.log.info(original_data.shape)
-                #self.log.info('self.data_out_fit')
-                #self.log.info(self.data_out_fit.shape)
-                #self.log.info('self._out_stds')
-                #self.log.info(self._out_stds.shape)
-                #self.log.info('self._out_means')
-                #self.log.info(self._out_means.shape)
-                #self.log.info('test_data.shape')
-                #self.log.info(test_data.shape)
-                #self.log.info('test_unc.shape')
-                #self.log.info(test_unc.shape)
+                test_data_samples = np.zeros((len(self.test_indices), self.out_dim, N_samples))
+                for i in range(N_samples):
+                    test_data_samples[:,:,i] = self._pca.inverse_transform(self._data_out_pca_test_samples[:,:,i]) * self._out_stds + self._out_means
+
+
 
                 test_data = self._pca.inverse_transform(self._data_out_pca_test)
 
@@ -1470,6 +1466,8 @@ class PCA_GPEmulator(CobayaComponent):
                         ax[1].fill_between(np.arange(self.out_dim)[cut_index:], (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(-test_data[ind][cut_index:]-self._pca_residual_std[cut_index:]+original_data[ind][cut_index:]), (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(-test_data[ind][cut_index:]+self._pca_residual_std[cut_index:]+original_data[ind][cut_index:]),color='orange' ,alpha=0.5, label='PCA uncertainty')
                     else:
                         ax[1].plot(np.arange(self.out_dim)[cut_index:],np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(original_data[ind][cut_index:]-test_data[ind][cut_index:]), label='residual')
+                        for j in range(N_samples):
+                            ax[1].plot(np.arange(self.out_dim)[cut_index:],np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(original_data[ind][cut_index:]-test_data_samples[ind,cut_index:,j]), color='orange', lw=0.1)
                         ax[1].fill_between(np.arange(self.out_dim)[cut_index:], np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(-test_data[ind][cut_index:]-test_unc[ind][cut_index:]+original_data[ind][cut_index:]), np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(-test_data[ind][cut_index:]+test_unc[ind][cut_index:]+original_data[ind][cut_index:]), alpha=0.5, label='SAMPLING uncertainty')
                         ax[1].fill_between(np.arange(self.out_dim)[cut_index:], np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(-test_data[ind][cut_index:]-self._pca_residual_std[cut_index:]+original_data[ind][cut_index:]), np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(-test_data[ind][cut_index:]+self._pca_residual_std[cut_index:]+original_data[ind][cut_index:]),color='orange' ,alpha=0.5, label='PCA uncertainty')
                     ax[1].grid(True)
@@ -1479,6 +1477,8 @@ class PCA_GPEmulator(CobayaComponent):
 
                     ax[2].set_ylabel(r'$\triangle D^{TT}_{\ell}/CV$')
                     ax[2].plot(np.arange(self.out_dim)[cut_index:],(original_data[ind][cut_index:]-test_data[ind][cut_index:])/cv, label='residual')
+                    for j in range(N_samples):
+                        ax[2].plot(np.arange(self.out_dim)[cut_index:],(original_data[ind][cut_index:]-test_data_samples[ind,cut_index:,j])/cv, color='orange', lw=0.1)
                     ax[2].fill_between(np.arange(self.out_dim)[cut_index:], (-test_data[ind][cut_index:]-test_unc[ind][cut_index:]+original_data[ind][cut_index:])/cv, (-test_data[ind][cut_index:]+test_unc[ind][cut_index:]+original_data[ind][cut_index:])/cv, alpha=0.5, label='SAMPLING uncertainty')
                     
                     ax[2].fill_between(np.arange(self.out_dim)[cut_index:], (-test_data[ind][cut_index:]-self._pca_residual_std[cut_index:]+original_data[ind][cut_index:])/cv, (-test_data[ind][cut_index:]+self._pca_residual_std[cut_index:]+original_data[ind][cut_index:])/cv,color='orange', alpha=0.5, label='PCA uncertainty')
