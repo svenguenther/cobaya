@@ -136,8 +136,8 @@ class EmulatorCache(CobayaComponent):
             min_loglike = self.dataframes[self.theories[0]]['loglike'].min()
             max_loglike = self.dataframes[self.theories[0]]['loglike'].max()
 
-            self.log.info("Min loglike in data cache: {}".format(min_loglike))
-            self.log.info("Max loglike in data cache: {}".format(max_loglike))
+            self.log.debug("Min loglike in data cache: {}".format(min_loglike))
+            self.log.debug("Max loglike in data cache: {}".format(max_loglike))
 
             # Check whether the data point is already in the cache
             new_hash = hash(tuple(data[self.theories[0]]['params']))

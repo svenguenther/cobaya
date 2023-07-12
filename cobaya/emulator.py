@@ -388,6 +388,8 @@ class Emulator(CobayaComponent):
         # If we are not ready yet, we cannot calculate anything
         if not self._emulator_trained:
             self.log.info("Emulator not trained yet")
+            self.log.info("Cache size: %d" % self.data_cache._size())
+            self.log.info("Max loglike: %f" % self._max_loglike)
             self.counter_emulator_not_used += 1
             self.in_validation = False
             self.write_log_step('not_used')
@@ -1029,17 +1031,17 @@ class PCA_GPEmulator(CobayaComponent):
 
 
     def _create_kernel(self, theta_boundary_scale= 3.0, update_mask = False):
+        self.kernel_type = 'rbf_plus_white' # 'rbf_plus_white' or 'rbf'
         #self.log.info("Creating kernel")
 
-        max_val = 8.0
+        max_val = 11.0
+        noise_extra = 5.0
 
         ini_bounds = []
         for i in range(self.in_dim):
             ini_bounds.append([np.exp(-max_val), np.exp(max_val)])
 
         # create kernel
-        a = ([0.01,5.0],[0.01,5.0],[0.01,5.0],[0.01,5.0],[0.01,5.0],[0.01,5.0])
-
         if theta_boundary_scale == 0.0:
             pass
         else:
@@ -1052,11 +1054,17 @@ class PCA_GPEmulator(CobayaComponent):
             if self.n_pca is not None:
                 #self._kernels = [ConstantKernel() * RBF() for i in range(self.n_pca)]
                 #self._kernels = [ConstantKernel() * RBF(np.ones(self.in_dim)) + WhiteKernel() for i in range(self.n_pca)]
-                self._kernels = [ConstantKernel( constant_value_bounds=(np.exp(-max_val), np.exp(max_val)) ) * RBF(np.ones(self.in_dim), tuple(ini_bounds) ) for i in range(self.n_pca)]
+                if self.kernel_type == 'rbf_plus_white':
+                    self._kernels = [ConstantKernel( constant_value_bounds=(np.exp(-max_val), np.exp(max_val)) ) * RBF(np.ones(self.in_dim), tuple(ini_bounds) ) + WhiteKernel( noise_level_bounds=(np.exp(-max_val-noise_extra), np.exp(max_val+noise_extra)) ) for i in range(self.n_pca)]
+                else:
+                    self._kernels = [ConstantKernel( constant_value_bounds=(np.exp(-max_val), np.exp(max_val)) ) * RBF(np.ones(self.in_dim), tuple(ini_bounds) ) for i in range(self.n_pca)]
             else:
                 #self._kernels = [ConstantKernel() * RBF() for i in range(self.out_dim)]
                 #self._kernels = [ConstantKernel() * RBF(np.ones(self.in_dim)) + WhiteKernel() for i in range(self.out_dim)]
-                self._kernels = [ConstantKernel( constant_value_bounds=(np.exp(-max_val), np.exp(max_val)) ) * RBF(np.ones(self.in_dim), tuple(ini_bounds) ) for i in range(self.out_dim)]
+                if self.kernel_type == 'rbf_plus_white':
+                    self._kernels = [ConstantKernel( constant_value_bounds=(np.exp(-max_val), np.exp(max_val)) ) * RBF(np.ones(self.in_dim), tuple(ini_bounds) ) + WhiteKernel( noise_level_bounds=(np.exp(-max_val-noise_extra), np.exp(max_val+noise_extra)) ) for i in range(self.out_dim)]
+                else:
+                    self._kernels = [ConstantKernel( constant_value_bounds=(np.exp(-max_val), np.exp(max_val)) ) * RBF(np.ones(self.in_dim), tuple(ini_bounds) ) for i in range(self.out_dim)]
         else:
             thetas= []   
             bounds = []
@@ -1081,17 +1089,27 @@ class PCA_GPEmulator(CobayaComponent):
                                 _+=1              
                     else:
                         # if the previous kernel had the same number of parameters, we can use the same
-                        if len(GP.kernel_.theta)==self.in_dim+1:
-                            thetas[i].append(GP.kernel_.theta[j+1])
-                            bounds[i].append([max(np.exp(GP.kernel_.theta[j+1]-theta_boundary_scale),np.exp(-max_val)), min(np.exp(GP.kernel_.theta[j+1]+theta_boundary_scale),np.exp(max_val))])
-                        else:
-                            thetas[i] = np.append(thetas[i],1.0)
-                            bounds[i] = np.append(bounds[i],np.array([[np.exp(-max_val), np.exp(max_val)]]), axis=0)
-                        self._in_mask[i,j] = True
+                        if self.kernel_type == 'rbf_plus_white':
+                            if len(GP.kernel_.theta)==self.in_dim+2:
+                                thetas[i].append(GP.kernel_.theta[j+1])
+                                bounds[i].append([max(np.exp(GP.kernel_.theta[j+1]-theta_boundary_scale),np.exp(-max_val)), min(np.exp(GP.kernel_.theta[j+1]+theta_boundary_scale),np.exp(max_val))])
+                            else:
+                                thetas[i] = np.append(thetas[i],1.0)
+                                bounds[i] = np.append(bounds[i],np.array([[np.exp(-max_val), np.exp(max_val)]]), axis=0)
+                            self._in_mask[i,j] = True
+                        elif self.kernel_type == 'rbf':
+                            if len(GP.kernel_.theta)==self.in_dim+1:
+                                thetas[i].append(GP.kernel_.theta[j+1])
+                                bounds[i].append([max(np.exp(GP.kernel_.theta[j+1]-theta_boundary_scale),np.exp(-max_val)), min(np.exp(GP.kernel_.theta[j+1]+theta_boundary_scale),np.exp(max_val))])
+                            else:
+                                thetas[i] = np.append(thetas[i],1.0)
+                                bounds[i] = np.append(bounds[i],np.array([[np.exp(-max_val), np.exp(max_val)]]), axis=0)
+                            self._in_mask[i,j] = True
 
                 # add the white noise parameter
-                #thetas[i] = np.append(thetas[i],GP.kernel_.theta[-1])
-                #bounds[i] = np.append(bounds[i] ,np.array([[max(np.exp(GP.kernel_.theta[-1]-theta_boundary_scale),np.exp(-11.0)), min(np.exp(GP.kernel_.theta[-1]+theta_boundary_scale),np.exp(11.0))]]), axis=0)
+                if self.kernel_type == 'rbf_plus_white':
+                    thetas[i] = np.append(thetas[i],GP.kernel_.theta[-1])
+                    bounds[i] = np.append(bounds[i] ,np.array([[max(np.exp(GP.kernel_.theta[-1]-theta_boundary_scale),np.exp(-max_val-noise_extra)), min(np.exp(GP.kernel_.theta[-1]+theta_boundary_scale),np.exp(max_val+noise_extra))]]), axis=0)
 
                 # transform the input mask to indices
                 self._in_mask_indices[i] = np.where(self._in_mask[i])[0]
@@ -1128,11 +1146,15 @@ class PCA_GPEmulator(CobayaComponent):
                     
 
             if self.n_pca is not None:
-                #self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1:-1]),length_scale_bounds=tuple(bounds[i][1:-1]))  + WhiteKernel(np.exp(thetas[i][-1]),noise_level_bounds=tuple(bounds[i][-1])) for i in range(self.n_pca)]
-                self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1:]),length_scale_bounds=tuple(bounds[i][1:]))  for i in range(self.n_pca)]
+                if self.kernel_type == 'rbf_plus_white':
+                    self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1:-1]),length_scale_bounds=tuple(bounds[i][1:-1]))  + WhiteKernel(np.exp(thetas[i][-1]),noise_level_bounds=tuple(bounds[i][-1])) for i in range(self.n_pca)]
+                else:
+                    self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1:]),length_scale_bounds=tuple(bounds[i][1:]))  for i in range(self.n_pca)]
             else:
-                #self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1:-1]),length_scale_bounds=tuple(bounds[i][1:-1]))  + WhiteKernel(np.exp(thetas[i][-1]),noise_level_bounds=tuple(bounds[i][-1])) for i in range(self.out_dim)]
-                self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1:]),length_scale_bounds=tuple(bounds[i][1:]))  for i in range(self.out_dim)]
+                if self.kernel_type == 'rbf_plus_white':
+                    self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1:-1]),length_scale_bounds=tuple(bounds[i][1:-1]))  + WhiteKernel(np.exp(thetas[i][-1]),noise_level_bounds=tuple(bounds[i][-1])) for i in range(self.out_dim)]
+                else:
+                    self._kernels = [ConstantKernel(constant_value=np.exp(thetas[i][0]), constant_value_bounds=tuple(bounds[i][0])) * RBF(np.exp(thetas[i][1:]),length_scale_bounds=tuple(bounds[i][1:]))  for i in range(self.out_dim)]
 
 
         #self.log.info('kernels done')
