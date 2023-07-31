@@ -30,9 +30,9 @@ class quantity_GP:
         self.dim = dim
         self.n = n
 
-from matplotlib import rc
-rc('font', **{'family': 'serif', 'serif': ['Computer Modern'], 'size': 15})
-rc('text', usetex=True)
+#from matplotlib import rc
+#rc('font', **{'family': 'serif', 'serif': ['Computer Modern'], 'size': 15})
+#rc('text', usetex=True)
 
 
 #
@@ -497,7 +497,7 @@ class Emulator(CobayaComponent):
                             self.state[theory][key][k] = pred
 
                             if k in ['tt','te','ee','pp']:
-                                self.state[theory][key][k][:1] = 0.0
+                                self.state[theory][key][k][:2] = 0.0
         
         #self.log.info(self.state)
         
@@ -1265,7 +1265,7 @@ class PCA_GPEmulator(CobayaComponent):
             self.test_indices = np.arange(len(self.data_in_fit))
 
         print("Size train indices", len(self.train_indices))
-        print("Size train indices", len(self.test_indices))
+        print("Size test indices", len(self.test_indices))
 
         # Train the GP
         #self.log.info("Training GP")
@@ -1445,7 +1445,8 @@ class PCA_GPEmulator(CobayaComponent):
 
                 for ind in rel_index:
                     fig,ax = plt.subplots(3,sharex=True,figsize=(8,8))
-                    ax[2].set_xlabel(r'$\ell$')
+                    #ax[2].set_xlabel(r'$\mathit{l}$')
+                    ax[2].set_xlabel('ell')
                     ax[0].set_ylabel(self.name)
                     if self.name in ['pp']:
                         ax[0].plot(np.arange(self.out_dim)[cut_index:],(np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*original_data[ind][cut_index:], label='CLASS')
@@ -1459,7 +1460,8 @@ class PCA_GPEmulator(CobayaComponent):
                         ax[0].fill_between(np.arange(self.out_dim)[cut_index:], np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(test_data[ind][cut_index:]-self._pca_residual_std[cut_index:]), np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(test_data[ind][cut_index:]+self._pca_residual_std[cut_index:]),color='orange', alpha=0.5, label='PCA uncertainty')
                     ax[0].grid(True)
                     ax[0].legend()
-                    ax[0].set_ylabel(r'$D^{TT}_{\ell}$')
+                    #ax[0].set_ylabel(r'$D^{TT}_{\mathit{l}}$')
+                    ax[0].set_ylabel("D^TT")
                     if self.name in ['pp']:
                         ax[1].plot(np.arange(self.out_dim)[cut_index:],(np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(original_data[ind][cut_index:]-test_data[ind][cut_index:]), label='residual')
                         ax[1].fill_between(np.arange(self.out_dim)[cut_index:], (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(-test_data[ind][cut_index:]-test_unc[ind][cut_index:]+original_data[ind][cut_index:]), (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(-test_data[ind][cut_index:]+test_unc[ind][cut_index:]+original_data[ind][cut_index:]), alpha=0.5, label='SAMPLING uncertainty')
@@ -1472,10 +1474,12 @@ class PCA_GPEmulator(CobayaComponent):
                         ax[1].fill_between(np.arange(self.out_dim)[cut_index:], np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(-test_data[ind][cut_index:]-self._pca_residual_std[cut_index:]+original_data[ind][cut_index:]), np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(-test_data[ind][cut_index:]+self._pca_residual_std[cut_index:]+original_data[ind][cut_index:]),color='orange' ,alpha=0.5, label='PCA uncertainty')
                     ax[1].grid(True)
                     ax[1].legend(loc = 'upper right')
-                    ax[1].set_ylabel(r'$\triangle D^{TT}_{\ell}$')
+                    #ax[1].set_ylabel(r'$\triangle D^{TT}_{\mathit{l}}$')
+                    ax[1].set_ylabel('delta D^TT')
                     cv = original_data[ind][cut_index:]/np.sqrt(np.arange(self.out_dim)[cut_index:]+0.5)
 
-                    ax[2].set_ylabel(r'$\triangle D^{TT}_{\ell}/CV$')
+                    #ax[2].set_ylabel(r'$\triangle D^{TT}_{\mathit{l}}/CV$')
+                    ax[2].set_ylabel('delta D^TT / CV')
                     ax[2].plot(np.arange(self.out_dim)[cut_index:],(original_data[ind][cut_index:]-test_data[ind][cut_index:])/cv, label='residual')
                     for j in range(N_samples):
                         ax[2].plot(np.arange(self.out_dim)[cut_index:],(original_data[ind][cut_index:]-test_data_samples[ind,cut_index:,j])/cv, color='orange', lw=0.1)
@@ -1488,7 +1492,7 @@ class PCA_GPEmulator(CobayaComponent):
                     # tight layout
                     fig.tight_layout()
 
-                    fig.savefig('./plots/test_'+self.name+'_'+str(ind)+'_gp_backtrafo.pdf')
+                    fig.savefig('./plots/test_'+self.name+'_'+str(ind)+'_gp_backtrafo.png')
  
                 plt.figure().clear()
                 plt.close('all')
