@@ -36,7 +36,7 @@ emulator:
    
    **delta_loglike_cache:** 300,        # only data points with a delta_loglike + min_loglike are cached. All other points are removed from the cache   \  
    
-   **min_cache_size:** 30,        # minimum number of points in cache before emulator is getting trained   \  
+   **min_training_size:** 30,        # minimum number of points in cache before emulator is getting trained   \  
    
    **gp_initial_minimization_states:** 80,        # number of kernel optimizations when learning new pca  \  
    
