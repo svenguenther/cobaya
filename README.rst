@@ -41,11 +41,13 @@ emulator:
    **gp_initial_minimization_states:** 80,        # number of kernel optimizations when learning new pca  \  
    
    **gp_minimization_states:** 10,        # number of kernel optimizations when NOT learning new pca   \  
+   
+   **input_parameter:** 10,        # dictionary of emulated quantities with lists of the demanded input parameters. If left blank, all parameters are used to predict the quantity   \  
 
 
 ===================
 
-Author: Sven Günther
+Author of Modification: Sven Günther; Cobaya by Jesus Torrado and Antony Lewis
 
 .. image:: ./img/logo_ttk.png
    :alt: RWTH Aachen
