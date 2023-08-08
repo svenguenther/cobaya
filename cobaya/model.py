@@ -33,6 +33,7 @@ from cobaya.tools import deepcopy_where_possible, are_different_params_lists, \
 from cobaya import mpi
 from cobaya.emulator import Emulator
 
+import matplotlib.pyplot as plt
 
 @contextmanager
 def timing_on(model: 'Model'):
@@ -228,6 +229,9 @@ class Model(HasLogger):
 
         It is recommended to use the simpler function :func:`~model.get_model` instead.
         """
+
+        self.plot_counter = 0
+
         self.set_logger()
         self._updated_info: InputDict = {
             "params": deepcopy_where_possible(info_params),
@@ -387,6 +391,11 @@ class Model(HasLogger):
         self.validation_request = True
         theory_flag = None # 0 = no theory used, 1 = theory used , 2 = theory used but in validation mode
         #cached = False
+        all_states = {}
+        for (component, like_index), param_dep in zip(self._component_order.items(),
+                                                    self._params_of_dependencies):
+            all_states[component._name] = []
+
         while(self.validation_request == True):
             #self.in_validation = False
             self.validation_request = False
@@ -420,6 +429,7 @@ class Model(HasLogger):
                         self.in_validation = True
                         self.validation_request = True
                         theory_flag=2   
+                #self.log.info(self.validation_request)
                 #self.log.info("CURRENT STATE PAST")
                 #self.log.info(component._current_state)
                 if not compute_success:
@@ -442,13 +452,93 @@ class Model(HasLogger):
                 #if self.in_validation:
                 #    if like_index is not None:
                 #        component._current_state = None
+
+                all_states[component._name].append(component.current_state)
             
             if self.validation_request == True:
                 self.in_validation = True
             else:
                 self.in_validation = False
 
-        #self.log.info("SUCCESS FLAG")
+
+        if (len(all_states['classy']) > 1) and False:
+            from classy import Class
+            
+            tt = [state['Cl']['tt'] for state in all_states['classy']]
+
+
+            logp = np.zeros(len(tt))
+            for i in range(len(tt)):
+                logp[i] += all_states['SPT3G_Y1.TTTEEE'][i]['logp']
+
+            if tt[-1][0]==0.0:
+                spectrum_true = np.array(tt[-1])
+                spectrum_emu = np.array(tt[:-1])
+                logp_true = logp[-1]
+                logp_emu = logp[:-1]
+            else:
+                spectrum_true = np.array(tt[-2])
+                spectrum_emu = np.vstack([np.array(tt[:-2]),np.array([tt[-1]])])
+                logp_true = logp[-2]
+                logp_emu = np.append(np.array(logp[:-2]),np.array([logp[-1]]))
+
+            cosmo = Class()
+
+            input_dict = {
+                "output": "tCl,pCl,lCl,mPk",
+                "non linear": "halofit",
+                "lensing":"yes",
+                "compute damping scale":"yes",
+                'N_ncdm' : 1,
+                'm_ncdm' : 0.06,
+                #'T_ncdm' : 0.71611,
+                "N_ur": 2.038,
+                "l_max_scalars": 3200,
+            }
+
+            for key, item in all_states['classy'][0]['params'].items():
+                input_dict[key] = item
+            cosmo.set(input_dict)
+            cosmo.compute()
+            spectrum_true = cosmo.lensed_cl(3200)['tt']
+
+            # make plot showing true and emulated spectra and residuals
+            fig, ax = plt.subplots(3, 1, figsize=(12, 8),sharex=True)
+            ell = np.arange(len(spectrum_true))
+            ax[0].plot(ell,ell*(ell+1)* spectrum_true, label='chisq true {}'.format(str(logp_true)))
+            ax[0].legend()
+
+            for i in range(len(spectrum_emu)):
+                ax[0].plot(ell,ell*(ell+1)* spectrum_emu[i], label='emu')
+            
+            # plot residuals
+            for i in range(len(spectrum_emu)):
+                ax[1].plot(ell[2:], ell[2:]*(ell[2:]+1)* (spectrum_emu[i][2:]-spectrum_true[2:]), label='chisq {}'.format(str(logp_emu[i])))
+            ax[1].legend()
+            ax[1].grid(True)
+            # cosmic variance
+            CV = spectrum_true/np.sqrt(ell+0.5)
+
+            # plot residuals
+            for i in range(len(spectrum_emu)):
+                ax[2].plot(ell[2:], (spectrum_emu[i][2:]-spectrum_true[2:])/CV[2:], label='chisq {}'.format(str(logp_emu[i])))
+            ax[2].legend()
+            ax[2].set_xlabel('ell')
+            ax[2].grid(True)
+
+            plt.savefig('./run_plots/recent_tt_{}.jpg'.format(str(self.plot_counter)))
+            # clean matplotlib
+            plt.clf()
+            plt.cla()
+            plt.close()
+
+            # clear memory
+            del cosmo
+
+
+
+
+            self.plot_counter += 1
 
         # Here we add new data to the emulator. It is either accepted or rejected.
         if theory_flag == 1:
