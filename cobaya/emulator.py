@@ -64,7 +64,6 @@ class Emulator(CobayaComponent):
         warnings.filterwarnings(action='ignore', category=ConvergenceWarning)
 
 
-
         self.set_logger("emulator")
         self._emulator = None
         self._emulator_ready = False
@@ -89,6 +88,8 @@ class Emulator(CobayaComponent):
 
         self.masking = {} if 'masking' not in args[1] else args[1]['masking']
 
+        # In this dict, for every predicted quantity a list of parameters for the prediction is stored. If empty, all parameters are used
+        self.input_parameter = {} if 'input_parameter' not in args[1] else args[1]['input_parameter']
 
         self.N_validation_states = 5 if 'N_validation_states' not in args[1] else args[1]['N_validation_states']
 
@@ -202,10 +203,19 @@ class Emulator(CobayaComponent):
             self.predictors[theory] = {}
             for key, value in self.must_provide[theory].items():
 
+                self.log.info("Creating predictor for %s" % key)
+                
+                input_mask = np.ones(len(state[theory]['params']),dtype=bool)
+                if key in self.input_parameter:
+                    for i,par in enumerate(state[theory]['params']):
+                        if par not in self.input_parameter[key]:
+                            input_mask[i] = False
+
                 # Create a new GP
                 if type(value) == int:
                     self.predictors[theory][key] = PCA_GPEmulator(name=str(key),
-                                                                  out_dim=value,in_dim=len(state[theory]['params']), 
+                                                                  out_dim=value,
+                                                                  input_mask=input_mask, 
                                                                   testset_fraction = self.testset_fraction, 
                                                                   pca_cache=self.pca_cache, 
                                                                   debug=self.debug, 
@@ -219,7 +229,7 @@ class Emulator(CobayaComponent):
                     if len(value) == 1:
                         self.predictors[theory][key] = PCA_GPEmulator(name=str(key),
                                                                       out_dim=value[list(value.keys())[0]],
-                                                                      in_dim=len(state[theory]['params']), 
+                                                                      input_mask=input_mask, 
                                                                       testset_fraction = self.testset_fraction, 
                                                                       pca_cache=self.pca_cache, 
                                                                       debug=self.debug, 
@@ -230,11 +240,18 @@ class Emulator(CobayaComponent):
                                                                       N_pca_components=self.N_pca_components,
                                                                       N_pca_components_default=self.N_pca_components_default)
                     else:
-                        for k,v in value.items():   # TODO: super ugly, but works for now. Fix this
+                        for k,v in value.items():   # TODO: super ugly, but works for now. Fix this\\
+
+                            input_mask = np.ones(len(state[theory]['params']),dtype=bool)
+                            if k in self.input_parameter:
+                                for i,par in enumerate(state[theory]['params']):
+                                    if par not in self.input_parameter[k]:
+                                        input_mask[i] = False
+
                             if key == 'Cl': 
                                 self.predictors[theory][k] = PCA_GPEmulator(name=str(k),
                                                                             out_dim=v+1,
-                                                                            in_dim=len(state[theory]['params']), 
+                                                                            input_mask=input_mask, 
                                                                             testset_fraction = self.testset_fraction, 
                                                                             pca_cache=self.pca_cache, 
                                                                             debug=self.debug,
@@ -248,7 +265,7 @@ class Emulator(CobayaComponent):
                             else:
                                 self.predictors[theory][k] = PCA_GPEmulator(name=str(k),
                                                                             out_dim=v,
-                                                                            in_dim=len(state[theory]['params']), 
+                                                                            input_mask=input_mask, 
                                                                             testset_fraction = self.testset_fraction, 
                                                                             pca_cache=self.pca_cache, 
                                                                             debug=self.debug, 
@@ -261,10 +278,12 @@ class Emulator(CobayaComponent):
                 else:
                     self.log.error("Unknown type of prediction: %s" % type(value))
             
+            input_mask = np.ones(len(state[theory]['params']),dtype=bool)
+
             # for testing add a loglike predictor
             self.predictors[theory]['loglike'] = PCA_GPEmulator(name='loglike',
                                                                 out_dim=1,
-                                                                in_dim=len(state[theory]['params']), 
+                                                                input_mask=input_mask, 
                                                                 testset_fraction = self.testset_fraction, 
                                                                 pca_cache=self.pca_cache, 
                                                                 debug=self.debug, 
@@ -545,6 +564,10 @@ class Emulator(CobayaComponent):
                 data = self.data_cache.get_data(theory, keys = ['params',name,'loglike'], N=N)
 
                 # Load the data into the GP
+
+                self.log.info("Loading data to GP")
+                self.log.info(name)
+                self.log.info(data)
                 pca_created = GP.load_training_data(data['params'],data[name],data['loglike'],renormalize=renormalize)
 
                 if pca_created:
@@ -556,17 +579,22 @@ class Emulator(CobayaComponent):
     # Set the required parameters for each theory code
     def _set_theories(self, theory):
         self.theories.append(theory)
-        #self.log.info('theory')
-        #self.log.info(theory)
         return False
     
     # Set the required parameters for each theory code
     def _set_must_provide(self, must_provide, theory):
         self.must_provide[theory] = {}
 
+        self.log.info("self.must_provide")
+        self.log.info(must_provide)
+
         for element in must_provide:
+            self.log.info(element.options)
             if element.options is None:
                 dim = 1
+                self.must_provide[theory][element.name] = dim
+            elif type(element.options)==int:
+                dim = element.options
                 self.must_provide[theory][element.name] = dim
             elif type(element.options)==dict:
                 if element.name in self.must_provide[theory].keys():
@@ -610,6 +638,9 @@ class Emulator(CobayaComponent):
             for key in self.must_provide[theory]['Cl'].keys():
                 if key in ['tt','te','ee','pp']:
                     self.must_provide[theory]['Cl'][key] = max_ell
+
+        self.log.info("self.must_provide")
+        self.log.info(self.must_provide)
 
         return False
 
@@ -757,10 +788,15 @@ class PCA_GPEmulator(CobayaComponent):
     file_base_name = 'emulator'
 
     def __init__(self, *args, **kwargs):
-        self.name = 'name' if 'name' not in kwargs else kwargs['name']
-        self.set_logger("PCA_GP_Emulator_"+self.name)
+        self._name = 'name' if 'name' not in kwargs else kwargs['name']
+        self.set_logger("PCA_GP_Emulator_"+self._name)
         self.out_dim = kwargs['out_dim']
-        self.in_dim = kwargs['in_dim']
+        self.input_mask = kwargs['input_mask']
+        self.in_dim = int(sum(self.input_mask))
+
+        self.log.info(self._name)
+        self.log.info(self.input_mask)
+        self.log.info(self.in_dim)
 
         self.debug= kwargs['debug']
 
@@ -836,25 +872,30 @@ class PCA_GPEmulator(CobayaComponent):
     def _determine_n_pca(self):
         if self.out_dim == 1:
             self.n_pca = None
-        elif self.out_dim > 100:
+        elif self.out_dim > 20:
             # some handwaving here. This is not really tested TODO: test this
             print(self.N_pca_components)
             print(self.N_pca_components.keys())
-            if self.name in self.N_pca_components.keys():
-                self.n_pca = self.N_pca_components[self.name]
+            if self._name in self.N_pca_components.keys():
+                self.n_pca = self.N_pca_components[self._name]
             else:
                 self.n_pca = self.N_pca_components_default
         else:
             self.n_pca = None#self.out_dim
 
-        print(self.name)
+        print(self._name)
         print(self.n_pca)
 
         return True
     
     def load_training_data(self, data_in, data_out, loglike, renormalize=True):
         self.log.debug("Loading data")
-        self.data_in = data_in
+        self.log.info(self._name)
+        self.log.info("Data in shape: %s" % str(data_in.shape))
+        self.log.info("Data out shape: %s" % str(data_out.shape))
+
+        self.data_in = data_in[:,self.input_mask]
+        self.log.info("Data in shape: %s" % str(self.data_in.shape))
         self.data_out = data_out
         self.loglike = loglike
         if len(self.data_out.shape)==1:
@@ -914,24 +955,24 @@ class PCA_GPEmulator(CobayaComponent):
 
         if self.debug and renormalize:
             # plot the data
-            if self.name in ['tt','te','ee','pp','angular_diameter_distance','Hubble']:
+            if self._name in ['tt','te','ee','pp','angular_diameter_distance','Hubble']:
                 for i in range(len(self.data_in[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
                     for j in range(len(self.data_out)):
-                        if self.name in ['tt','te','ee','pp']:
+                        if self._name in ['tt','te','ee','pp']:
                             ax.plot(np.arange(len(self.data_out[0])), np.arange(len(self.data_out[0]))*np.arange(len(self.data_out[0]))*self.data_out[j])
                     ax.set_xlabel('Input')
-                    ax.set_ylabel(self.name)
-                    if self.name in ['tt','te','ee','pp']:
+                    ax.set_ylabel(self._name)
+                    if self._name in ['tt','te','ee','pp']:
                         ax.set_xscale('log')
-                    fig.savefig('./plots/data_'+self.name+'_'+str(i)+'.png')
+                    fig.savefig('./plots/data_'+self._name+'_'+str(i)+'.png')
             else:
                 for i in range(len(self.data_in[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
                     ax.plot(self.data_in[:,i], self.data_out, 'o')
                     ax.set_xlabel('Input')
-                    ax.set_ylabel(self.name)
-                    fig.savefig('./plots/data_'+self.name+'_'+str(i)+'.png')
+                    ax.set_ylabel(self._name)
+                    fig.savefig('./plots/data_'+self._name+'_'+str(i)+'.png')
             plt.figure().clear()
             plt.close('all')
             plt.close()
@@ -944,21 +985,21 @@ class PCA_GPEmulator(CobayaComponent):
 
         if self.debug and renormalize:
             # plot the data
-            if self.name in ['tt','te','ee','pp','angular_diameter_distance','Hubble']:
+            if self._name in ['tt','te','ee','pp','angular_diameter_distance','Hubble']:
                 for i in range(len(self.data_in[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
                     for j in range(len(self.data_out)):
                         ax.plot(np.arange(len(self.data_out[0])), self.data_out[j])
                     ax.set_xlabel('Input')
-                    ax.set_ylabel(self.name)
-                    fig.savefig('./plots/data_'+self.name+'_'+str(i)+'_norm.png')
+                    ax.set_ylabel(self._name)
+                    fig.savefig('./plots/data_'+self._name+'_'+str(i)+'_norm.png')
             else:
                 for i in range(len(self.data_in[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
                     ax.plot(self.data_in[:,i], self.data_out, 'o')
                     ax.set_xlabel('Input')
-                    ax.set_ylabel(self.name)
-                    fig.savefig('./plots/data_'+self.name+'_'+str(i)+'_norm.png')
+                    ax.set_ylabel(self._name)
+                    fig.savefig('./plots/data_'+self._name+'_'+str(i)+'_norm.png')
 
             plt.figure().clear()
             plt.close('all')
@@ -978,7 +1019,7 @@ class PCA_GPEmulator(CobayaComponent):
                 #self.log.info("Creating PCA")
                 self._pca = PCA(n_components=self.n_pca)
 
-                data_pca_cache = self.pca_cache.get_data([self.name])[self.name]
+                data_pca_cache = self.pca_cache.get_data([self._name])[self._name]
 
                 # normalize the data and remove nans from liklihoods
                 data_pca_cache = np.array([(_[0]-self._out_means)/self._out_stds for _ in data_pca_cache if not np.isnan(_).any()])
@@ -1020,8 +1061,13 @@ class PCA_GPEmulator(CobayaComponent):
             # normalize the pca compoenents
             self._out_means_pca = np.mean(self._data_out_pca, axis=0)
             self._out_stds_pca = np.std(self._data_out_pca, axis=0)
+            self._out_stds_pca[self._out_stds_pca==0] = 1
 
             self._data_out_pca = (self._data_out_pca - self._out_means_pca)/self._out_stds_pca
+
+            self.log.info("PCA components")
+            self.log.info(self._data_out_pca)
+            self.log.info(self._out_stds_pca)
 
             self._singular_values = self._pca.singular_values_
 
@@ -1176,7 +1222,7 @@ class PCA_GPEmulator(CobayaComponent):
                 self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=self._N_restarts_initial, alpha=1.e-10) for i in range(self.n_pca)]
 
                 if self.debug:
-                    if False:
+                    if True:
                         #do some GP input plots for PCA
                         for i in range(self.n_pca):
                             for j in range(self.in_dim):
@@ -1184,7 +1230,7 @@ class PCA_GPEmulator(CobayaComponent):
                                 ax.scatter(self.data_in[:,j],self._data_out_pca[:,i])
                                 ax.set_xlabel('input')
                                 ax.set_ylabel('PCA component %d' % i)
-                                fig.savefig('./plots_pca_gp/%s_PCA_%d_%d.png' % (self.name,i,j))
+                                fig.savefig('./plots_pca_gp/%s_PCA_%d_%d.png' % (self._name,i,j))
 
                         plt.figure().clear()
                         plt.close('all')
@@ -1204,7 +1250,7 @@ class PCA_GPEmulator(CobayaComponent):
 
 
                 if self.debug:
-                    if False:
+                    if True:
                         #do some GP input plots for PCA
                         for i in range(self.n_pca):
                             for j in range(self.in_dim):
@@ -1212,7 +1258,7 @@ class PCA_GPEmulator(CobayaComponent):
                                 ax.scatter(self.data_in[:,j],self._data_out_pca[:,i])
                                 ax.set_xlabel('input')
                                 ax.set_ylabel('PCA component %d' % i)
-                                fig.savefig('./plots_pca_gp/%s_PCA_%d_%d.png' % (self.name,i,j))
+                                fig.savefig('./plots_pca_gp/%s_PCA_%d_%d.png' % (self._name,i,j))
 
                         plt.figure().clear()
                         plt.close('all')
@@ -1354,20 +1400,20 @@ class PCA_GPEmulator(CobayaComponent):
                     ax.errorbar(self._data_out_pca_fit[self.test_indices,i], self._data_out_pca_fit[self.test_indices,i]-(self._data_out_pca_test[:,i]-self._out_means_pca[i])/self._out_stds_pca[i], yerr=(self._data_out_pca_test_std[:,i])/self._out_stds_pca[i], fmt='o', label='Predicted')
                     ax.set_xlabel('true')
                     ax.set_ylabel('predicted - true')
-                    ax.set_title(self.name)
+                    ax.set_title(self._name)
                     ax.grid(True)
                     ax.legend()
-                    fig.savefig('./plots/test_'+self.name+'_'+str(i)+'_gp.png')
+                    fig.savefig('./plots/test_'+self._name+'_'+str(i)+'_gp.png')
             else:
                 for i in range(len(self._data_out_test[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
                     ax.errorbar(self.data_out_fit[self.test_indices,i], self.data_out_fit[self.test_indices,i]-self._data_out_test[:,i], yerr=self._data_out_test_std[:,i], fmt='o', label='Predicted')
                     ax.set_xlabel('true')
                     ax.set_ylabel('predicted - true')
-                    ax.set_title(self.name)
+                    ax.set_title(self._name)
                     ax.grid(True)
                     ax.legend()
-                    fig.savefig('./plots/test_'+self.name+'_'+str(i)+'_gp.png')
+                    fig.savefig('./plots/test_'+self._name+'_'+str(i)+'_gp.png')
 
 
             # TRAIN SET !!!!!!!!!!!!!!!
@@ -1394,7 +1440,7 @@ class PCA_GPEmulator(CobayaComponent):
                     ax.set_ylabel('predicted - true')
                     ax.grid(True)
                     ax.legend()
-                    fig.savefig('./plots/train_'+self.name+'_'+str(i)+'_gp.png')
+                    fig.savefig('./plots/train_'+self._name+'_'+str(i)+'_gp.png')
             else:
                 for i in range(len(self._data_out_test[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
@@ -1403,7 +1449,7 @@ class PCA_GPEmulator(CobayaComponent):
                     ax.set_ylabel('predicted - true')
                     ax.grid(True)
                     ax.legend()
-                    fig.savefig('./plots/train_'+self.name+'_'+str(i)+'_gp.png')
+                    fig.savefig('./plots/train_'+self._name+'_'+str(i)+'_gp.png')
 
 
             plt.figure().clear()
@@ -1447,8 +1493,8 @@ class PCA_GPEmulator(CobayaComponent):
                     fig,ax = plt.subplots(3,sharex=True,figsize=(8,8))
                     #ax[2].set_xlabel(r'$\mathit{l}$')
                     ax[2].set_xlabel('ell')
-                    ax[0].set_ylabel(self.name)
-                    if self.name in ['pp']:
+                    ax[0].set_ylabel(self._name)
+                    if self._name in ['pp']:
                         ax[0].plot(np.arange(self.out_dim)[cut_index:],(np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*original_data[ind][cut_index:], label='CLASS')
                         ax[0].plot(np.arange(self.out_dim)[cut_index:],(np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*test_data[ind][cut_index:], label='emulated')
                         ax[0].fill_between(np.arange(self.out_dim)[cut_index:], (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(test_data[ind][cut_index:]-test_unc[ind][cut_index:]), (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(test_data[ind][cut_index:]+test_unc[ind][cut_index:]), alpha=0.5, label='SAMPLING uncertainty')
@@ -1462,7 +1508,7 @@ class PCA_GPEmulator(CobayaComponent):
                     ax[0].legend()
                     #ax[0].set_ylabel(r'$D^{TT}_{\mathit{l}}$')
                     ax[0].set_ylabel("D^TT")
-                    if self.name in ['pp']:
+                    if self._name in ['pp']:
                         ax[1].plot(np.arange(self.out_dim)[cut_index:],(np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(original_data[ind][cut_index:]-test_data[ind][cut_index:]), label='residual')
                         ax[1].fill_between(np.arange(self.out_dim)[cut_index:], (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(-test_data[ind][cut_index:]-test_unc[ind][cut_index:]+original_data[ind][cut_index:]), (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(-test_data[ind][cut_index:]+test_unc[ind][cut_index:]+original_data[ind][cut_index:]), alpha=0.5, label='SAMPLING uncertainty')
                         ax[1].fill_between(np.arange(self.out_dim)[cut_index:], (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(-test_data[ind][cut_index:]-self._pca_residual_std[cut_index:]+original_data[ind][cut_index:]), (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(-test_data[ind][cut_index:]+self._pca_residual_std[cut_index:]+original_data[ind][cut_index:]),color='orange' ,alpha=0.5, label='PCA uncertainty')
@@ -1492,7 +1538,7 @@ class PCA_GPEmulator(CobayaComponent):
                     # tight layout
                     fig.tight_layout()
 
-                    fig.savefig('./plots/test_'+self.name+'_'+str(ind)+'_gp_backtrafo.png')
+                    fig.savefig('./plots/test_'+self._name+'_'+str(ind)+'_gp_backtrafo.png')
  
                 plt.figure().clear()
                 plt.close('all')
@@ -1538,8 +1584,13 @@ class PCA_GPEmulator(CobayaComponent):
     
     def _predict(self, data_in):
         # Normalize the data
+        self.log.info(self._name)
+        self.log.info(data_in.shape)
+        data_in = data_in[:,self.input_mask]
+        self.log.info(data_in.shape)
+
         data_in = (data_in - self._in_means)/self._in_stds
-        #self.log.info(self.name)
+        #self.log.info(self._name)
         # Predict the data
         if self.n_pca is not None:
             data_out = np.zeros(self.n_pca)
@@ -1571,6 +1622,10 @@ class PCA_GPEmulator(CobayaComponent):
     # that the _predict function returns the mean and the standard deviation of the emulator. The
     # _sample function additionally samples the uncertainty of the emulator.
     def _sample(self, data_in, n_samples=1):
+        self.log.info(self._name)
+        self.log.info(data_in.shape)
+        data_in = data_in[:,self.input_mask]
+        self.log.info(data_in.shape)
         # Normalize the data
         data_in = (data_in - self._in_means)/self._in_stds
         # Predict the data

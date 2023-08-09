@@ -264,14 +264,15 @@ class Theory(CobayaComponent):
 
         # HERE: Evaluate emulator here
         if emulator is not None:
-            if state is None:
-                if not self.is_validated:
-                    self.log.debug("Try emulating new state")
-                    state = {"params": params_values_dict,
-                            "dependency_params": dependency_params,
-                            "derived": {} if want_derived else None}
-                    prev_loglike = sum(loglikes)
-                    state, self.is_validated = emulator.evaluate(self._name, state, want_derived, prev_loglike, **params_values_dict)
+            if self._name in emulator.theories:
+                if state is None:
+                    if not self.is_validated:
+                        self.log.debug("Try emulating new state")
+                        state = {"params": params_values_dict,
+                                "dependency_params": dependency_params,
+                                "derived": {} if want_derived else None}
+                        prev_loglike = sum(loglikes)
+                        state, self.is_validated = emulator.evaluate(self._name, state, want_derived, prev_loglike, **params_values_dict)
 
         if not state:
             self.log.debug("Computing new state")

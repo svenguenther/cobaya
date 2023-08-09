@@ -272,8 +272,19 @@ class Model(HasLogger):
             
             for component, like_index in self._component_order.items():
                 if like_index is None:
-                    self.emulator._set_theories(component._name)
-                    self.emulator._set_must_provide(self._must_provide[component] ,component._name)
+                    # Check that the emulator is requested for a theory code
+                    if "theory_codes" in info_emulator.keys():
+                        if component._name in info_emulator['theory_codes']:
+                            self.log.info(component._name)
+                            self.log.info(self._must_provide[component])
+                            self.emulator._set_theories(component._name)
+                            self.emulator._set_must_provide(self._must_provide[component] ,component._name)
+                    else:
+                        self.log.info(component._name)
+                        self.log.info(self._must_provide[component])
+                        self.emulator._set_theories(component._name)
+                        self.emulator._set_must_provide(self._must_provide[component] ,component._name)
+
 
     def info(self) -> InputDict:
         """
@@ -461,7 +472,7 @@ class Model(HasLogger):
                 self.in_validation = False
 
 
-        if (len(all_states['classy']) > 1) and False:
+        if False:
             from classy import Class
             
             tt = [state['Cl']['tt'] for state in all_states['classy']]
