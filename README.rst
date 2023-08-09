@@ -10,6 +10,9 @@ This code implements a native emulator for the Bayesian inference code Cobaya. T
 The usage is as follows. You add to your cobaya input dict or ini file following element. All values stated are the default values:
 
 emulator:
+
+   **theory_codes:** [],            # list of theories codes which are to be emulated. If empty, all codes are emulated \
+
    **postpone_learning:** 80,            # number of simulation calls before the emulator is used. Required to get useful PCA and to not train the burn-in \
    
    **learn_every:** 20,                 # every N new data points the kernel of the GP is fitted. This is more expensive than just adding a new point to your GP \
