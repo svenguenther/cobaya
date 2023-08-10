@@ -57,6 +57,9 @@ class Emulator(CobayaComponent):
 
     def __init__(self, *args, **kwargs):
 
+        self.runtime = 0.1 if 'runtime_emulator' not in args[1] else args[1]['runtime_emulator']
+        self._runtime_counter = 0.0 # TODO: SG make a dynamical time measurement of the entire emulation process
+
         import warnings
         from sklearn.exceptions import DataConversionWarning
         warnings.filterwarnings(action='ignore', category=DataConversionWarning)
@@ -564,10 +567,6 @@ class Emulator(CobayaComponent):
                 data = self.data_cache.get_data(theory, keys = ['params',name,'loglike'], N=N)
 
                 # Load the data into the GP
-
-                self.log.info("Loading data to GP")
-                self.log.info(name)
-                self.log.info(data)
                 pca_created = GP.load_training_data(data['params'],data[name],data['loglike'],renormalize=renormalize)
 
                 if pca_created:
@@ -794,9 +793,6 @@ class PCA_GPEmulator(CobayaComponent):
         self.input_mask = kwargs['input_mask']
         self.in_dim = int(sum(self.input_mask))
 
-        self.log.info(self._name)
-        self.log.info(self.input_mask)
-        self.log.info(self.in_dim)
 
         self.debug= kwargs['debug']
 
@@ -1080,10 +1076,6 @@ class PCA_GPEmulator(CobayaComponent):
             self._out_stds_pca[self._out_stds_pca==0] = 1
 
             self._data_out_pca = (self._data_out_pca - self._out_means_pca)/self._out_stds_pca
-
-            self.log.info("PCA components")
-            self.log.info(self._data_out_pca)
-            self.log.info(self._out_stds_pca)
 
             self._singular_values = self._pca.singular_values_
 
@@ -1555,13 +1547,15 @@ class PCA_GPEmulator(CobayaComponent):
                         # tight layout
                         fig.tight_layout()
 
+                        raise ValueError('test')
+
                         fig.savefig('./plots/test_'+self._name+'_'+str(ind)+'_gp_backtrafo.png')
                     else:
                         fig,ax = plt.subplots(3,sharex=True,figsize=(8,8))
                         ax[1].set_xlabel('E')
-                        ax[0].set_ylabel(self._name + ' E^2.9')
+                        ax[0].set_ylabel(self._name + ' E^2.7')
                         E = np.logspace(np.log10(1),np.log10(1.14799e9),self.out_dim)
-                        power = 2.9
+                        power = 2.7
                         ax[0].plot(E,E**power*original_data[ind], label='Original')
                         ax[0].plot(E,E**power*test_data[ind], label='emulated')
                         ax[0].set_xscale('log')
@@ -1632,10 +1626,7 @@ class PCA_GPEmulator(CobayaComponent):
     
     def _predict(self, data_in):
         # Normalize the data
-        self.log.info(self._name)
-        self.log.info(data_in.shape)
         data_in = data_in[:,self.input_mask]
-        self.log.info(data_in.shape)
 
         data_in = (data_in - self._in_means)/self._in_stds
         #self.log.info(self._name)
@@ -1670,10 +1661,7 @@ class PCA_GPEmulator(CobayaComponent):
     # that the _predict function returns the mean and the standard deviation of the emulator. The
     # _sample function additionally samples the uncertainty of the emulator.
     def _sample(self, data_in, n_samples=1):
-        self.log.info(self._name)
-        self.log.info(data_in.shape)
         data_in = data_in[:,self.input_mask]
-        self.log.info(data_in.shape)
         # Normalize the data
         data_in = (data_in - self._in_means)/self._in_stds
         # Predict the data

@@ -90,6 +90,8 @@ class MCMC(CovmatSampler):
         Initializes the sampler: creates the proposal distribution and draws the initial
         sample.
         """
+        self.blocking_updated = False
+
         if not self.model.prior.d():
             raise LoggedError(self.log, "No parameters being varied for sampler")
         self.log.debug("Initializing")
@@ -314,12 +316,16 @@ class MCMC(CovmatSampler):
         for number in self._quants_d_units:
             number.set_scale(self.cycle_length // self.current_point.output_thin)
 
-    def set_proposer_initial_covmat(self, load=False):
+    def set_proposer_initial_covmat(self, load=False, load_old=False):
         """Creates/loads an initial covariance matrix and sets it in the Proposer."""
         if load:
             # Build the initial covariance matrix of the proposal, or load from checkpoint
-            self._initial_covmat, where_nan = self._load_covmat(
-                prefer_load_old=self.output.is_resuming())
+            if load_old:
+                self._initial_covmat, where_nan = self._load_covmat(
+                    prefer_load_old=True)
+            else:
+                self._initial_covmat, where_nan = self._load_covmat(
+                    prefer_load_old=self.output.is_resuming())
             if np.any(where_nan) and self.learn_proposal:
                 # We want to start learning the covmat earlier.
                 self.mpi_info("Covariance matrix " +
@@ -363,6 +369,14 @@ class MCMC(CovmatSampler):
             while last_n < self.max_samples and not self.converged:
                 self.get_new_sample()
                 self.n_steps_raw += 1
+                if self.model.emulator is not None:
+                    if self.model.emulator._emulator_trained and not self.blocking_updated:
+                        n = None if self.measure_speeds is True else int(self.measure_speeds)
+                        self.model.measure_and_set_speeds(n=n, discard=0, random_state=42)
+                        self.set_proposer_blocking()                    
+                        self.set_proposer_initial_covmat(load=True, load_old=True) # load old here .covmat
+                        self.blocking_updated = True
+
                 if self.output_every.unit:
                     # if output_every in sec, print some info
                     # and dump at fixed time intervals

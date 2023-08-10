@@ -229,6 +229,7 @@ class Model(HasLogger):
 
         It is recommended to use the simpler function :func:`~model.get_model` instead.
         """
+        self.times = None 
 
         self.plot_counter = 0
 
@@ -1450,19 +1451,30 @@ class Model(HasLogger):
         if n is None:
             n = 1 if mpi.more_than_one_process() else 3
         n_done = 0
-        with timing_on(self):
-            while n_done < int(n) + int(discard):
-                point = self.prior.reference(random_state=random_state,
-                                             max_tries=max_tries, ignore_fixed=True,
-                                             warn_if_no_ref=False)
-                if self.loglike(point, cached=False)[0] != -np.inf:
-                    n_done += 1
-            self.mpi_debug("Computed %d points to measure speeds.", n_done)
-            times = [component.timer.get_time_avg() or 0  # type: ignore
-                     for component in self.components]
-        if mpi.more_than_one_process():
-            # average for different points
-            times = np.average(mpi.allgather(times), axis=0)
+
+        self.emulator
+        if self.times is None:
+            with timing_on(self):
+                while n_done < int(n) + int(discard):
+                    point = self.prior.reference(random_state=random_state,
+                                                max_tries=max_tries, ignore_fixed=True,
+                                                warn_if_no_ref=False)
+                    if self.loglike(point, cached=False)[0] != -np.inf:
+                        n_done += 1
+                self.mpi_debug("Computed %d points to measure speeds.", n_done)
+                times = [component.timer.get_time_avg() or 0  # type: ignore
+                        for component in self.components]
+            if mpi.more_than_one_process():
+                # average for different points
+                times = np.average(mpi.allgather(times), axis=0)
+            self.times = times
+        else:
+            # we already meassured times, so we just use them. 
+            # If we (by chance) an emulator was trained, we need to replace the time of the emulated component by the time of the emulator
+            times = self.times
+            if self.emulator is not None:
+                if self.emulator._emulator_trained:
+                    times[-1] = self.emulator.runtime            
         measured_speeds = [1 / (1e-7 + time) for time in times]
         self.mpi_info('Setting measured speeds (per sec): %r',
                       {component: float("%.3g" % speed) for component, speed in
