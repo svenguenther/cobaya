@@ -19,7 +19,7 @@ from sklearn.model_selection import train_test_split
 import time
 import os
 import gc
-
+import matplotlib as mpl
 class quantity_GP:
     name: str       # name of this GP
     dim: int        # dimensionality of this problem
@@ -664,7 +664,7 @@ class Emulator(CobayaComponent):
         likelihood_states = {}
 
         for name, sub_state in state.items():
-            if sub_state[0] is None:
+            if (sub_state[0] is None) and name in self.theories:
                 theory_states[name] = sub_state[1]
 
                 # check whether the state was evaluated just before before
@@ -902,7 +902,6 @@ class PCA_GPEmulator(CobayaComponent):
             self.data_out = np.array(self.data_out).astype('float').reshape(-1,1) # this weird shape is important otherwise it breaks for some reason 
         self._normalize_training_data(renormalize)
 
-
         if self.debug and renormalize:
             # Calculate the distance matrix of data_in
             self._data_in_dist = np.zeros((self.data_in.shape[0],self.data_in.shape[0]))
@@ -969,9 +968,18 @@ class PCA_GPEmulator(CobayaComponent):
             else:
                 for i in range(len(self.data_in[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
-                    ax.plot(self.data_in[:,i], self.data_out, 'o')
-                    ax.set_xlabel('Input')
-                    ax.set_ylabel(self._name)
+                    if self.out_dim==1:
+                        ax.plot(self.data_in[:,i], self.data_out, 'o')
+                        ax.set_xlabel('Input')
+                        ax.set_ylabel(self._name)
+                    else:
+
+                        norm = mpl.colors.Normalize(vmin=self.data_in[:,i].min(), vmax=self.data_in[:,i].max())
+                        cmap = mpl.cm.ScalarMappable(norm=norm, cmap=mpl.cm.jet)
+                        cmap.set_array([])                       
+                        for j in range(len(self.data_out)):
+                            ax.plot(np.arange(len(self.data_out[0])), self.data_out[j], color=cmap.to_rgba(self.data_in[j,i]))
+                        fig.colorbar(cmap)
                     fig.savefig('./plots/data_'+self._name+'_'+str(i)+'.png')
             plt.figure().clear()
             plt.close('all')
@@ -996,9 +1004,18 @@ class PCA_GPEmulator(CobayaComponent):
             else:
                 for i in range(len(self.data_in[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
-                    ax.plot(self.data_in[:,i], self.data_out, 'o')
-                    ax.set_xlabel('Input')
-                    ax.set_ylabel(self._name)
+                    if self.out_dim==1:
+                        ax.plot(self.data_in[:,i], self.data_out, 'o')
+                        ax.set_xlabel('Input')
+                        ax.set_ylabel(self._name)
+                    else:
+
+                        norm = mpl.colors.Normalize(vmin=self.data_in[:,i].min(), vmax=self.data_in[:,i].max())
+                        cmap = mpl.cm.ScalarMappable(norm=norm, cmap=mpl.cm.jet)
+                        cmap.set_array([])                       
+                        for j in range(len(self.data_out)):
+                            ax.plot(np.arange(len(self.data_out[0])), self.data_out[j], color=cmap.to_rgba(self.data_in[j,i]))
+                        fig.colorbar(cmap)
                     fig.savefig('./plots/data_'+self._name+'_'+str(i)+'_norm.png')
 
             plt.figure().clear()
@@ -1020,7 +1037,6 @@ class PCA_GPEmulator(CobayaComponent):
                 self._pca = PCA(n_components=self.n_pca)
 
                 data_pca_cache = self.pca_cache.get_data([self._name])[self._name]
-
                 # normalize the data and remove nans from liklihoods
                 data_pca_cache = np.array([(_[0]-self._out_means)/self._out_stds for _ in data_pca_cache if not np.isnan(_).any()])
                 #self.log.info('data_pca_cache')
@@ -1490,56 +1506,88 @@ class PCA_GPEmulator(CobayaComponent):
 
 
                 for ind in rel_index:
-                    fig,ax = plt.subplots(3,sharex=True,figsize=(8,8))
-                    #ax[2].set_xlabel(r'$\mathit{l}$')
-                    ax[2].set_xlabel('ell')
-                    ax[0].set_ylabel(self._name)
-                    if self._name in ['pp']:
-                        ax[0].plot(np.arange(self.out_dim)[cut_index:],(np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*original_data[ind][cut_index:], label='CLASS')
-                        ax[0].plot(np.arange(self.out_dim)[cut_index:],(np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*test_data[ind][cut_index:], label='emulated')
-                        ax[0].fill_between(np.arange(self.out_dim)[cut_index:], (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(test_data[ind][cut_index:]-test_unc[ind][cut_index:]), (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(test_data[ind][cut_index:]+test_unc[ind][cut_index:]), alpha=0.5, label='SAMPLING uncertainty')
-                        ax[0].fill_between(np.arange(self.out_dim)[cut_index:], (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(test_data[ind][cut_index:]-self._pca_residual_std[cut_index:]), (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(test_data[ind][cut_index:]+self._pca_residual_std[cut_index:]),color='orange', alpha=0.5, label='PCA uncertainty')
-                    else:
-                        ax[0].plot(np.arange(self.out_dim)[cut_index:],np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*original_data[ind][cut_index:], label='CLASS')
-                        ax[0].plot(np.arange(self.out_dim)[cut_index:],np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*test_data[ind][cut_index:], label='emulated')
-                        ax[0].fill_between(np.arange(self.out_dim)[cut_index:], np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(test_data[ind][cut_index:]-test_unc[ind][cut_index:]), np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(test_data[ind][cut_index:]+test_unc[ind][cut_index:]), alpha=0.5, label='SAMPLING uncertainty')
-                        ax[0].fill_between(np.arange(self.out_dim)[cut_index:], np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(test_data[ind][cut_index:]-self._pca_residual_std[cut_index:]), np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(test_data[ind][cut_index:]+self._pca_residual_std[cut_index:]),color='orange', alpha=0.5, label='PCA uncertainty')
-                    ax[0].grid(True)
-                    ax[0].legend()
-                    #ax[0].set_ylabel(r'$D^{TT}_{\mathit{l}}$')
-                    ax[0].set_ylabel("D^TT")
-                    if self._name in ['pp']:
-                        ax[1].plot(np.arange(self.out_dim)[cut_index:],(np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(original_data[ind][cut_index:]-test_data[ind][cut_index:]), label='residual')
-                        ax[1].fill_between(np.arange(self.out_dim)[cut_index:], (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(-test_data[ind][cut_index:]-test_unc[ind][cut_index:]+original_data[ind][cut_index:]), (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(-test_data[ind][cut_index:]+test_unc[ind][cut_index:]+original_data[ind][cut_index:]), alpha=0.5, label='SAMPLING uncertainty')
-                        ax[1].fill_between(np.arange(self.out_dim)[cut_index:], (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(-test_data[ind][cut_index:]-self._pca_residual_std[cut_index:]+original_data[ind][cut_index:]), (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(-test_data[ind][cut_index:]+self._pca_residual_std[cut_index:]+original_data[ind][cut_index:]),color='orange' ,alpha=0.5, label='PCA uncertainty')
-                    else:
-                        ax[1].plot(np.arange(self.out_dim)[cut_index:],np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(original_data[ind][cut_index:]-test_data[ind][cut_index:]), label='residual')
+                    if self._name in ['pp','tt','te','ee']:
+                        fig,ax = plt.subplots(3,sharex=True,figsize=(8,8))
+                        #ax[2].set_xlabel(r'$\mathit{l}$')
+                        ax[2].set_xlabel('ell')
+                        ax[0].set_ylabel(self._name)
+                        if self._name in ['pp']:
+                            ax[0].plot(np.arange(self.out_dim)[cut_index:],(np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*original_data[ind][cut_index:], label='CLASS')
+                            ax[0].plot(np.arange(self.out_dim)[cut_index:],(np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*test_data[ind][cut_index:], label='emulated')
+                            ax[0].fill_between(np.arange(self.out_dim)[cut_index:], (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(test_data[ind][cut_index:]-test_unc[ind][cut_index:]), (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(test_data[ind][cut_index:]+test_unc[ind][cut_index:]), alpha=0.5, label='SAMPLING uncertainty')
+                            ax[0].fill_between(np.arange(self.out_dim)[cut_index:], (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(test_data[ind][cut_index:]-self._pca_residual_std[cut_index:]), (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(test_data[ind][cut_index:]+self._pca_residual_std[cut_index:]),color='orange', alpha=0.5, label='PCA uncertainty')
+                        else:
+                            ax[0].plot(np.arange(self.out_dim)[cut_index:],np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*original_data[ind][cut_index:], label='CLASS')
+                            ax[0].plot(np.arange(self.out_dim)[cut_index:],np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*test_data[ind][cut_index:], label='emulated')
+                            ax[0].fill_between(np.arange(self.out_dim)[cut_index:], np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(test_data[ind][cut_index:]-test_unc[ind][cut_index:]), np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(test_data[ind][cut_index:]+test_unc[ind][cut_index:]), alpha=0.5, label='SAMPLING uncertainty')
+                            ax[0].fill_between(np.arange(self.out_dim)[cut_index:], np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(test_data[ind][cut_index:]-self._pca_residual_std[cut_index:]), np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(test_data[ind][cut_index:]+self._pca_residual_std[cut_index:]),color='orange', alpha=0.5, label='PCA uncertainty')
+                        ax[0].grid(True)
+                        ax[0].legend()
+                        #ax[0].set_ylabel(r'$D^{TT}_{\mathit{l}}$')
+                        ax[0].set_ylabel("D^TT")
+                        if self._name in ['pp']:
+                            ax[1].plot(np.arange(self.out_dim)[cut_index:],(np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(original_data[ind][cut_index:]-test_data[ind][cut_index:]), label='residual')
+                            ax[1].fill_between(np.arange(self.out_dim)[cut_index:], (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(-test_data[ind][cut_index:]-test_unc[ind][cut_index:]+original_data[ind][cut_index:]), (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(-test_data[ind][cut_index:]+test_unc[ind][cut_index:]+original_data[ind][cut_index:]), alpha=0.5, label='SAMPLING uncertainty')
+                            ax[1].fill_between(np.arange(self.out_dim)[cut_index:], (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(-test_data[ind][cut_index:]-self._pca_residual_std[cut_index:]+original_data[ind][cut_index:]), (np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:])**2*(-test_data[ind][cut_index:]+self._pca_residual_std[cut_index:]+original_data[ind][cut_index:]),color='orange' ,alpha=0.5, label='PCA uncertainty')
+                        else:
+                            ax[1].plot(np.arange(self.out_dim)[cut_index:],np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(original_data[ind][cut_index:]-test_data[ind][cut_index:]), label='residual')
+                            for j in range(N_samples):
+                                ax[1].plot(np.arange(self.out_dim)[cut_index:],np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(original_data[ind][cut_index:]-test_data_samples[ind,cut_index:,j]), color='orange', lw=0.1)
+                            ax[1].fill_between(np.arange(self.out_dim)[cut_index:], np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(-test_data[ind][cut_index:]-test_unc[ind][cut_index:]+original_data[ind][cut_index:]), np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(-test_data[ind][cut_index:]+test_unc[ind][cut_index:]+original_data[ind][cut_index:]), alpha=0.5, label='SAMPLING uncertainty')
+                            ax[1].fill_between(np.arange(self.out_dim)[cut_index:], np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(-test_data[ind][cut_index:]-self._pca_residual_std[cut_index:]+original_data[ind][cut_index:]), np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(-test_data[ind][cut_index:]+self._pca_residual_std[cut_index:]+original_data[ind][cut_index:]),color='orange' ,alpha=0.5, label='PCA uncertainty')
+                        ax[1].grid(True)
+                        ax[1].legend(loc = 'upper right')
+                        #ax[1].set_ylabel(r'$\triangle D^{TT}_{\mathit{l}}$')
+                        ax[1].set_ylabel('delta D^TT')
+                        cv = original_data[ind][cut_index:]/np.sqrt(np.arange(self.out_dim)[cut_index:]+0.5)
+
+                        #ax[2].set_ylabel(r'$\triangle D^{TT}_{\mathit{l}}/CV$')
+                        ax[2].set_ylabel('delta D^TT / CV')
+                        ax[2].plot(np.arange(self.out_dim)[cut_index:],(original_data[ind][cut_index:]-test_data[ind][cut_index:])/cv, label='residual')
                         for j in range(N_samples):
-                            ax[1].plot(np.arange(self.out_dim)[cut_index:],np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(original_data[ind][cut_index:]-test_data_samples[ind,cut_index:,j]), color='orange', lw=0.1)
-                        ax[1].fill_between(np.arange(self.out_dim)[cut_index:], np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(-test_data[ind][cut_index:]-test_unc[ind][cut_index:]+original_data[ind][cut_index:]), np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(-test_data[ind][cut_index:]+test_unc[ind][cut_index:]+original_data[ind][cut_index:]), alpha=0.5, label='SAMPLING uncertainty')
-                        ax[1].fill_between(np.arange(self.out_dim)[cut_index:], np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(-test_data[ind][cut_index:]-self._pca_residual_std[cut_index:]+original_data[ind][cut_index:]), np.arange(self.out_dim)[cut_index:]*np.arange(self.out_dim)[cut_index:]*(-test_data[ind][cut_index:]+self._pca_residual_std[cut_index:]+original_data[ind][cut_index:]),color='orange' ,alpha=0.5, label='PCA uncertainty')
-                    ax[1].grid(True)
-                    ax[1].legend(loc = 'upper right')
-                    #ax[1].set_ylabel(r'$\triangle D^{TT}_{\mathit{l}}$')
-                    ax[1].set_ylabel('delta D^TT')
-                    cv = original_data[ind][cut_index:]/np.sqrt(np.arange(self.out_dim)[cut_index:]+0.5)
+                            ax[2].plot(np.arange(self.out_dim)[cut_index:],(original_data[ind][cut_index:]-test_data_samples[ind,cut_index:,j])/cv, color='orange', lw=0.1)
+                        ax[2].fill_between(np.arange(self.out_dim)[cut_index:], (-test_data[ind][cut_index:]-test_unc[ind][cut_index:]+original_data[ind][cut_index:])/cv, (-test_data[ind][cut_index:]+test_unc[ind][cut_index:]+original_data[ind][cut_index:])/cv, alpha=0.5, label='SAMPLING uncertainty')
+                        
+                        ax[2].fill_between(np.arange(self.out_dim)[cut_index:], (-test_data[ind][cut_index:]-self._pca_residual_std[cut_index:]+original_data[ind][cut_index:])/cv, (-test_data[ind][cut_index:]+self._pca_residual_std[cut_index:]+original_data[ind][cut_index:])/cv,color='orange', alpha=0.5, label='PCA uncertainty')
+                        ax[2].grid(True)
+                        #ax[2].legend()
 
-                    #ax[2].set_ylabel(r'$\triangle D^{TT}_{\mathit{l}}/CV$')
-                    ax[2].set_ylabel('delta D^TT / CV')
-                    ax[2].plot(np.arange(self.out_dim)[cut_index:],(original_data[ind][cut_index:]-test_data[ind][cut_index:])/cv, label='residual')
-                    for j in range(N_samples):
-                        ax[2].plot(np.arange(self.out_dim)[cut_index:],(original_data[ind][cut_index:]-test_data_samples[ind,cut_index:,j])/cv, color='orange', lw=0.1)
-                    ax[2].fill_between(np.arange(self.out_dim)[cut_index:], (-test_data[ind][cut_index:]-test_unc[ind][cut_index:]+original_data[ind][cut_index:])/cv, (-test_data[ind][cut_index:]+test_unc[ind][cut_index:]+original_data[ind][cut_index:])/cv, alpha=0.5, label='SAMPLING uncertainty')
-                    
-                    ax[2].fill_between(np.arange(self.out_dim)[cut_index:], (-test_data[ind][cut_index:]-self._pca_residual_std[cut_index:]+original_data[ind][cut_index:])/cv, (-test_data[ind][cut_index:]+self._pca_residual_std[cut_index:]+original_data[ind][cut_index:])/cv,color='orange', alpha=0.5, label='PCA uncertainty')
-                    ax[2].grid(True)
-                    #ax[2].legend()
+                        # tight layout
+                        fig.tight_layout()
 
-                    # tight layout
-                    fig.tight_layout()
+                        fig.savefig('./plots/test_'+self._name+'_'+str(ind)+'_gp_backtrafo.png')
+                    else:
+                        fig,ax = plt.subplots(3,sharex=True,figsize=(8,8))
+                        ax[1].set_xlabel('E')
+                        ax[0].set_ylabel(self._name + ' E^2.9')
+                        E = np.logspace(np.log10(1),np.log10(1.14799e9),self.out_dim)
+                        power = 2.9
+                        ax[0].plot(E,E**power*original_data[ind], label='Original')
+                        ax[0].plot(E,E**power*test_data[ind], label='emulated')
+                        ax[0].set_xscale('log')
+                        ax[1].set_xscale('log')
+                        ax[0].set_yscale('log')
 
-                    fig.savefig('./plots/test_'+self._name+'_'+str(ind)+'_gp_backtrafo.png')
- 
+                        ax[0].fill_between(E, E**power*(test_data[ind]-test_unc[ind]), E**power*(test_data[ind]+test_unc[ind]), alpha=0.5, label='SAMPLING uncertainty')
+                        ax[0].fill_between(E, E**power*(test_data[ind]-self._pca_residual_std), E**power*(test_data[ind]+self._pca_residual_std),color='orange', alpha=0.5, label='PCA uncertainty')
+
+                        ax[1].plot(E,E**power*(original_data[ind]-test_data[ind]), label='residual')
+                        ax[1].fill_between(E, E**power*(-test_data[ind]-test_unc[ind]+original_data[ind]), E**power*(-test_data[ind]+test_unc[ind]+original_data[ind]), alpha=0.5, label='SAMPLING uncertainty')
+                        ax[1].fill_between(E, E**power*(-test_data[ind]-self._pca_residual_std+original_data[ind]), E**power*(-test_data[ind]+self._pca_residual_std+original_data[ind]),color='orange' ,alpha=0.5, label='PCA uncertainty')
+                        
+                        ax[2].plot(E,(original_data[ind]-test_data[ind])/original_data[ind], label='relative residual')
+                        ax[2].fill_between(E, (-test_data[ind]-test_unc[ind]+original_data[ind])/original_data[ind], (-test_data[ind]+test_unc[ind]+original_data[ind])/original_data[ind], alpha=0.5, label='SAMPLING uncertainty')
+                        ax[2].fill_between(E, (-test_data[ind]-self._pca_residual_std+original_data[ind])/original_data[ind], (-test_data[ind]+self._pca_residual_std+original_data[ind])/original_data[ind],color='orange' ,alpha=0.5, label='PCA uncertainty')
+                        
+                        ax[0].legend(loc = 'upper right')
+                        ax[1].legend(loc = 'upper right')
+                        ax[1].set_ylabel('residual')
+                        ax[0].grid(True)
+                        ax[1].grid(True)
+                        ax[2].grid(True)
+
+                        fig.savefig('./plots/test_'+self._name+'_'+str(ind)+'_gp_backtrafo.png')
+
                 plt.figure().clear()
                 plt.close('all')
                 plt.close()

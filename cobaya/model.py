@@ -559,8 +559,7 @@ class Model(HasLogger):
                 for component, like_index in self._component_order.items():
                     #if like_index is None:
                     new_state[component._name] =  (like_index, component.current_state)
-                #self.log.info("NEW STATE")
-                #self.log.info(new_state)
+
                 self.emulator.add_state(new_state, loglikes.sum())
 
         if make_finite:
