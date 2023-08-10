@@ -275,13 +275,9 @@ class Model(HasLogger):
                     # Check that the emulator is requested for a theory code
                     if "theory_codes" in info_emulator.keys():
                         if component._name in info_emulator['theory_codes']:
-                            self.log.info(component._name)
-                            self.log.info(self._must_provide[component])
                             self.emulator._set_theories(component._name)
                             self.emulator._set_must_provide(self._must_provide[component] ,component._name)
                     else:
-                        self.log.info(component._name)
-                        self.log.info(self._must_provide[component])
                         self.emulator._set_theories(component._name)
                         self.emulator._set_must_provide(self._must_provide[component] ,component._name)
 
