@@ -279,6 +279,10 @@ class Minimize(Minimizer, CovmatSampler):
                                    {k: v for k, v in self.kwargs.items() if
                                     k != "objfun"})
                     result = pybobyqa.solve(**self.kwargs)
+                    self.log.info("RESULTS")
+                    self.log.info(result)
+                    self.log.info(self.kwargs)
+                    self.log.info("RESULTS FINISHED")
                     success = result.flag == result.EXIT_SUCCESS
                     if not success:
                         self.log.error(
