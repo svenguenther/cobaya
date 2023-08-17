@@ -1584,16 +1584,16 @@ class PCA_GPEmulator(CobayaComponent):
                         ax[0].fill_between(E, E**power*10**(test_data[ind]-test_unc[ind]), E**power*10**(test_data[ind]+test_unc[ind]), alpha=0.5, label='SAMPLING uncertainty')
                         ax[0].fill_between(E, E**power*10**(test_data[ind]-self._pca_residual_std), E**power*10**(test_data[ind]+self._pca_residual_std),color='orange', alpha=0.5, label='PCA uncertainty')
 
-                        ax[1].plot(E,E**power*10**(original_data[ind]-test_data[ind]), label='residual')
-                        ax[1].fill_between(E, E**power*10**(-test_data[ind]-test_unc[ind]+original_data[ind]), E**power*10**(-test_data[ind]+test_unc[ind]+original_data[ind]), alpha=0.5, label='SAMPLING uncertainty')
-                        ax[1].fill_between(E, E**power*10**(-test_data[ind]-self._pca_residual_std+original_data[ind]), E**power*10**(-test_data[ind]+self._pca_residual_std+original_data[ind]),color='orange' ,alpha=0.5, label='PCA uncertainty')
+                        ax[1].plot(E,E**power*(10**original_data[ind]-10**test_data[ind]), label='residual')
+                        ax[1].fill_between(E, E**power*(10**(-test_data[ind]-test_unc[ind])+10**original_data[ind]), E**power*(10**(-test_data[ind]+test_unc[ind])+10**original_data[ind]), alpha=0.5, label='SAMPLING uncertainty')
+                        ax[1].fill_between(E, E**power*(10**(-test_data[ind]-self._pca_residual_std)+10**original_data[ind]), E**power*(10**(-test_data[ind]+self._pca_residual_std)+10**original_data[ind]),color='orange' ,alpha=0.5, label='PCA uncertainty')
                         
                         ax[2].plot(E,10**(original_data[ind]-test_data[ind])/10**original_data[ind], label='relative residual')
-                        ax[2].fill_between(E, 10**(-test_data[ind]-test_unc[ind]+original_data[ind])/10**original_data[ind], 10**(-test_data[ind]+test_unc[ind]+original_data[ind])/10**original_data[ind], alpha=0.5, label='SAMPLING uncertainty')
-                        ax[2].fill_between(E, 10**(-test_data[ind]-self._pca_residual_std+original_data[ind])/10**original_data[ind], 10**(-test_data[ind]+self._pca_residual_std+original_data[ind])/10**original_data[ind],color='orange' ,alpha=0.5, label='PCA uncertainty')
+                        ax[2].fill_between(E, (10**(-test_data[ind]-test_unc[ind])+10**original_data[ind])/10**original_data[ind], (10**(-test_data[ind]+test_unc[ind])+10**original_data[ind])/10**original_data[ind], alpha=0.5, label='SAMPLING uncertainty')
+                        ax[2].fill_between(E, (10**(-test_data[ind]-self._pca_residual_std)+10**original_data[ind])/10**original_data[ind], (10**(-test_data[ind]+self._pca_residual_std)+10**original_data[ind])/10**original_data[ind],color='orange' ,alpha=0.5, label='PCA uncertainty')
                         
-                        ax[0].legend(loc = 'upper right')
-                        ax[1].legend(loc = 'upper right')
+                        ax[0].legend(loc = 'lower left')
+                        ax[1].legend(loc = 'lower left')
                         ax[1].set_ylabel('residual')
                         ax[0].grid(True)
                         ax[1].grid(True)
