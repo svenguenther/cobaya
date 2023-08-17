@@ -549,6 +549,9 @@ class Emulator(CobayaComponent):
         self.validation_loglikes = np.zeros(self.N_validation_states)
 
         self.last_evaluated_state[theory] = copy.deepcopy(self.state[theory])
+
+        # additionally we store all data points 
+
         return self.state[theory], True
 
     # This is the function that is called by the sampler
@@ -899,12 +902,11 @@ class PCA_GPEmulator(CobayaComponent):
     
     def load_training_data(self, data_in, data_out, loglike, renormalize=True):
         self.log.debug("Loading data")
-        self.log.info(self._name)
-        self.log.info("Data in shape: %s" % str(data_in.shape))
-        self.log.info("Data out shape: %s" % str(data_out.shape))
+        #self.log.info(self._name)
+        #self.log.info("Data in shape: %s" % str(data_in.shape))
+        #self.log.info("Data out shape: %s" % str(data_out.shape))
 
         self.data_in = data_in[:,self.input_mask]
-        self.log.info("Data in shape: %s" % str(self.data_in.shape))
         self.data_out = data_out
         self.loglike = loglike
         if len(self.data_out.shape)==1:
@@ -1005,9 +1007,13 @@ class PCA_GPEmulator(CobayaComponent):
             if self._name in ['tt','te','ee','pp','angular_diameter_distance','Hubble']:
                 for i in range(len(self.data_in[0])):
                     fig,ax = plt.subplots(figsize=(10,5))
+                    norm = mpl.colors.Normalize(vmin=self.data_in[:,i].min(), vmax=self.data_in[:,i].max())
+                    cmap = mpl.cm.ScalarMappable(norm=norm, cmap=mpl.cm.jet)
+                    cmap.set_array([])                       
                     for j in range(len(self.data_out)):
-                        ax.plot(np.arange(len(self.data_out[0])), self.data_out[j])
-                    ax.set_xlabel('Input')
+                        ax.plot(np.arange(len(self.data_out[0])), self.data_out[j], color=cmap.to_rgba(self.data_in[j,i]))
+                    fig.colorbar(cmap)
+                    #ax.set_xlabel('Input')
                     ax.set_ylabel(self._name)
                     fig.savefig('./plots/data_'+self._name+'_'+str(i)+'_norm.png')
             else:
@@ -1569,22 +1575,22 @@ class PCA_GPEmulator(CobayaComponent):
                         ax[0].set_ylabel(self._name + ' E^2.7')
                         E = np.logspace(np.log10(1),np.log10(1.14799e9),self.out_dim)
                         power = 2.7
-                        ax[0].plot(E,E**power*original_data[ind], label='Original')
-                        ax[0].plot(E,E**power*test_data[ind], label='emulated')
+                        ax[0].plot(E,E**power*10**original_data[ind], label='Original')
+                        ax[0].plot(E,E**power*10**test_data[ind], label='emulated')
                         ax[0].set_xscale('log')
                         ax[1].set_xscale('log')
                         ax[0].set_yscale('log')
 
-                        ax[0].fill_between(E, E**power*(test_data[ind]-test_unc[ind]), E**power*(test_data[ind]+test_unc[ind]), alpha=0.5, label='SAMPLING uncertainty')
-                        ax[0].fill_between(E, E**power*(test_data[ind]-self._pca_residual_std), E**power*(test_data[ind]+self._pca_residual_std),color='orange', alpha=0.5, label='PCA uncertainty')
+                        ax[0].fill_between(E, E**power*10**(test_data[ind]-test_unc[ind]), E**power*10**(test_data[ind]+test_unc[ind]), alpha=0.5, label='SAMPLING uncertainty')
+                        ax[0].fill_between(E, E**power*10**(test_data[ind]-self._pca_residual_std), E**power*10**(test_data[ind]+self._pca_residual_std),color='orange', alpha=0.5, label='PCA uncertainty')
 
-                        ax[1].plot(E,E**power*(original_data[ind]-test_data[ind]), label='residual')
-                        ax[1].fill_between(E, E**power*(-test_data[ind]-test_unc[ind]+original_data[ind]), E**power*(-test_data[ind]+test_unc[ind]+original_data[ind]), alpha=0.5, label='SAMPLING uncertainty')
-                        ax[1].fill_between(E, E**power*(-test_data[ind]-self._pca_residual_std+original_data[ind]), E**power*(-test_data[ind]+self._pca_residual_std+original_data[ind]),color='orange' ,alpha=0.5, label='PCA uncertainty')
+                        ax[1].plot(E,E**power*10**(original_data[ind]-test_data[ind]), label='residual')
+                        ax[1].fill_between(E, E**power*10**(-test_data[ind]-test_unc[ind]+original_data[ind]), E**power*10**(-test_data[ind]+test_unc[ind]+original_data[ind]), alpha=0.5, label='SAMPLING uncertainty')
+                        ax[1].fill_between(E, E**power*10**(-test_data[ind]-self._pca_residual_std+original_data[ind]), E**power*10**(-test_data[ind]+self._pca_residual_std+original_data[ind]),color='orange' ,alpha=0.5, label='PCA uncertainty')
                         
-                        ax[2].plot(E,(original_data[ind]-test_data[ind])/original_data[ind], label='relative residual')
-                        ax[2].fill_between(E, (-test_data[ind]-test_unc[ind]+original_data[ind])/original_data[ind], (-test_data[ind]+test_unc[ind]+original_data[ind])/original_data[ind], alpha=0.5, label='SAMPLING uncertainty')
-                        ax[2].fill_between(E, (-test_data[ind]-self._pca_residual_std+original_data[ind])/original_data[ind], (-test_data[ind]+self._pca_residual_std+original_data[ind])/original_data[ind],color='orange' ,alpha=0.5, label='PCA uncertainty')
+                        ax[2].plot(E,10**(original_data[ind]-test_data[ind])/10**original_data[ind], label='relative residual')
+                        ax[2].fill_between(E, 10**(-test_data[ind]-test_unc[ind]+original_data[ind])/10**original_data[ind], 10**(-test_data[ind]+test_unc[ind]+original_data[ind])/10**original_data[ind], alpha=0.5, label='SAMPLING uncertainty')
+                        ax[2].fill_between(E, 10**(-test_data[ind]-self._pca_residual_std+original_data[ind])/10**original_data[ind], 10**(-test_data[ind]+self._pca_residual_std+original_data[ind])/10**original_data[ind],color='orange' ,alpha=0.5, label='PCA uncertainty')
                         
                         ax[0].legend(loc = 'upper right')
                         ax[1].legend(loc = 'upper right')
