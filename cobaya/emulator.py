@@ -364,6 +364,19 @@ class Emulator(CobayaComponent):
         if self.timer:
             self.timer.start()
 
+        if np.isnan(loglike).any():
+            self.log.info('NAN DETECTED')
+            self.log.info(params_values_dict)
+            self.log.info(loglike)
+            self.log.info(self.validation_states)
+            self.validation_states['loglike'] = loglike
+            import json
+
+            with open('error_file.txt', 'w') as file:
+                file.write(json.dumps(self.validation_states)) # use `json.loads` to do the reverse
+            import sys 
+            sys.exit()
+
         #if (self.evalution_counter%100 == 0):
         if not self.in_validation:
             if ((self.counter_emulator_not_used+self.counter_emulator_used)%10 == 0):
@@ -1547,7 +1560,7 @@ class PCA_GPEmulator(CobayaComponent):
                         # tight layout
                         fig.tight_layout()
 
-                        raise ValueError('test')
+                        #raise ValueError('test')
 
                         fig.savefig('./plots/test_'+self._name+'_'+str(ind)+'_gp_backtrafo.png')
                     else:
