@@ -137,11 +137,13 @@ class Emulator(CobayaComponent):
 
         self.set_timing_on(True)
 
+        self.logfile_path = 'log_file.txt' if 'logfile_path' not in args[1] else args[1]['logfile_path']
+
         # check if log file exists and delete it
         # if self.debug:
-        if os.path.exists('log_file.txt'):
+        if os.path.exists(self.logfile_path):
             try:
-                os.remove('log_file.txt')
+                os.remove(self.logfile_path)
             except:
                 pass
 
@@ -180,7 +182,7 @@ class Emulator(CobayaComponent):
     
     def write_log_step(self, event, loglike=0.0):
         #if self.debug:  # Change this to be relevant soon TODO [SG]
-        with open('log_file.txt', 'a') as f:
+        with open(self.logfile_path, 'a') as f:
             f.write('%f %s %d %d %d %f ' % (loglike, event, self.counter_emulator_used, self.counter_emulator_not_used, self.evalution_counter ,time.time()))
             for val in self.validation_loglikes:
                 f.write('%f ' % val)
