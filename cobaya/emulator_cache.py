@@ -40,6 +40,8 @@ class EmulatorCache(CobayaComponent):
         self._N_dist_update_counter = 0
         self.neighbour_dist_mean = None
 
+        self.save_dir = None
+
     def initialize(self,state,loglike):
         
         self._emulator_cache = None
@@ -100,8 +102,8 @@ class EmulatorCache(CobayaComponent):
             min_loglike = self.dataframes[self.theories[0]]['loglike'].min()
             max_loglike = self.dataframes[self.theories[0]]['loglike'].max()
 
-            #self.log.info("Min loglike in data cache: {}".format(min_loglike))
-            #self.log.info("Max loglike in data cache: {}".format(max_loglike))
+            self.log.info("Min loglike in data cache: {}".format(min_loglike))
+            self.log.info("Max loglike in data cache: {}".format(max_loglike))
 
 
             #self.log.info("Min loglike in cache: {}".format(min_loglike))
@@ -116,6 +118,7 @@ class EmulatorCache(CobayaComponent):
                     for theory in data.keys():
                         if self.dataframes[theory].loc[self.dataframes[theory]['hash'] == new_hash, 'loglike'].all() < loglike:
                             self.dataframes[theory].loc[self.dataframes[theory]['hash'] == new_hash, 'loglike'] = loglike
+                            
                     return False
                 else:
                     self.log.debug("Add into in cache")
@@ -129,6 +132,11 @@ class EmulatorCache(CobayaComponent):
                         self.dataframes[theory]=self.dataframes[theory][self.dataframes[theory]['loglike'] != min_loglike]
                         self.log.debug("Adding data to cache")
                         self._newly_added_points += 1
+
+                    if self.save_dir is not None:
+                        
+                        self.dataframes[theory].to_pickle(self.save_dir+'/cache_data_'+ str(theory) +'.pkl')
+
                     return True
         else:
 
@@ -158,6 +166,10 @@ class EmulatorCache(CobayaComponent):
                     self.dataframes[theory]=pd.concat([self.dataframes[theory], pd.DataFrame(data[theory], columns=data[theory].keys())])
                     self.log.debug("Adding data to cache")
                     self._newly_added_points += 1
+
+                    if self.save_dir is not None:
+                        self.dataframes[theory].to_pickle(self.save_dir+'/cache_data_'+ str(theory) +'.pkl')
+
                 return True
     
 
@@ -215,7 +227,41 @@ class EmulatorCache(CobayaComponent):
         return True
 
     # This function loads the cache from a file
-    def _load_cache(self):
+    def load_cache(self, save_dir):
+        self.save_dir = save_dir
+
+        # checker whether the cache file exists
+        try:
+            # list all files in the directory
+            import os
+            files = os.listdir(self.save_dir)
+
+            # select files which start with 'data_cache'
+            files = [file for file in files if file.startswith('cache_data_')]
+            # select string between 'cache_data_' and '.pkl'
+            theories = [file.split('cache_data_')[1].split('.pkl')[0] for file in files]
+            self.theories = theories
+            if len(theories) == 0:
+                return False
+            self.log.info("Theories in cache: {}".format(theories))
+            for theory in theories:
+                self.dataframes[theory] = pd.read_pickle(self.save_dir+'/cache_data_'+theory+'.pkl')
+
+            self._newly_added_points = 0
+
+            self.log.info("Files in directory: {}".format(files))
+
+            self.log.info("Cache loaded from file with size:")
+            self.log.info(self._size())
+            self.initialized = True
+            self._emulator_cache = None
+            self._emulator_cache_ready = False
+            self._emulator_cache_trained = False
+
+            return True
+        except:
+            self.log.info("Cache file does not exist")
+
         return False
     
     # This function returns the size of the cache
@@ -253,6 +299,8 @@ class PCACache(CobayaComponent):
         self.delta_loglike_cache = 300 if 'delta_loglike_cache' not in kwargs else kwargs['delta_loglike_cache']
 
         self.dataframe = None # a dict between theory and a dataframe
+
+        self.save_dir = None
 
     def initialize(self,state,loglike,theory_name):
             
@@ -338,6 +386,12 @@ class PCACache(CobayaComponent):
                     for _ in self.theories:
                         self.dataframe = self.dataframe.drop(self.dataframe['loglike'].idxmin())
 
+                    if self.save_dir is not None:
+                        self.log.info("Saving PCA cache")
+                        self.log.info(self.dataframe)
+                        
+                        self.dataframe.to_pickle(self.save_dir+'/pca_data.pkl')
+
                     return True
                 return False
         else:
@@ -350,7 +404,11 @@ class PCACache(CobayaComponent):
                 return False
             else:
                 self.dataframe=pd.concat([self.dataframe, new_dataframe])
-                self.log.debug("Adding data to cache")
+                self.log.debug("Adding data to PCA cache")
+
+                if self.save_dir is not None:
+                    self.dataframe.to_pickle(self.save_dir+'/pca_data.pkl')
+
                 return True
 
     # This function saves the cache to a file
@@ -363,7 +421,20 @@ class PCACache(CobayaComponent):
         return True
 
     # This function loads the cache from a file
-    def _load_cache(self):
+    def load_cache(self, save_dir):
+        self.save_dir = save_dir
+
+        # checker whether the cache file exists
+        try:
+            self.dataframe = pd.read_pickle(self.save_dir+'/pca_data.pkl')
+            
+            self.theories = list([self.dataframe.iloc[0].name[0]])
+
+            self.log.info("Cache loaded from file")
+            self.initialized = True
+        except:
+            self.log.info("Cache file does not exist")
+
         return False
 
     # This function returns the size of the cache

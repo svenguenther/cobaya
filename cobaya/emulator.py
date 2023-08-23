@@ -121,6 +121,16 @@ class Emulator(CobayaComponent):
 
         self.last_evaluated_state = {}
 
+        self.validated_points = [] # list of points which have been validated. In the vicinity of these points we do not need to validate again
+
+        self.resume = False if 'resume' not in args[1] else args[1]['resume']
+        self.save_dir = "./emulator/" if 'save_dir' not in args[1] else args[1]['save_dir']
+
+        if self.resume:
+            # make directory if not existent
+            if not os.path.exists(self.save_dir):
+                os.makedirs(self.save_dir)
+
         self.timings = {'training':0.0,
                         'evaluating':0.0,
                         'add_data':0.0}
@@ -150,6 +160,11 @@ class Emulator(CobayaComponent):
             cache_size = 200 if 'pca_cache_size' not in args[1] else args[1]['pca_cache_size'],
             delta_loglike_cache = 300 if 'delta_loglike_pcacache' not in args[1] else args[1]['delta_loglike_pcacache'],
         )
+
+        # Check whether there are already some saved data points
+        if self.resume:
+            self.data_cache.load_cache(self.save_dir)
+            self.pca_cache.load_cache(self.save_dir)
 
 
         self.parameter_dimension = {}
@@ -551,6 +566,12 @@ class Emulator(CobayaComponent):
         self.last_evaluated_state[theory] = copy.deepcopy(self.state[theory])
 
         # additionally we store all data points 
+        data_in = np.array([[value for key,value in state['params'].items()]])
+        self.validated_points.append(copy.deepcopy(data_in))
+
+
+        #self.log.info('self.validated_points')
+        #self.log.info(self.validated_points)
 
         return self.state[theory], True
 
@@ -600,11 +621,7 @@ class Emulator(CobayaComponent):
     def _set_must_provide(self, must_provide, theory):
         self.must_provide[theory] = {}
 
-        self.log.info("self.must_provide")
-        self.log.info(must_provide)
-
         for element in must_provide:
-            self.log.info(element.options)
             if element.options is None:
                 dim = 1
                 self.must_provide[theory][element.name] = dim
@@ -654,9 +671,6 @@ class Emulator(CobayaComponent):
                 if key in ['tt','te','ee','pp']:
                     self.must_provide[theory]['Cl'][key] = max_ell
 
-        self.log.info("self.must_provide")
-        self.log.info(self.must_provide)
-
         return False
 
     def get_must_provide(self):
@@ -687,7 +701,6 @@ class Emulator(CobayaComponent):
                     
                     for key,val in self.last_evaluated_state[name]['params'].items():
                         if abs(sub_state[1]['params'][key]/val-1.0) <1.e-7: # This is a bit arbitrary nad not really safe
-                            #self.log.info("State was predicted before!")
                             return False
                         else:
                             continue
@@ -886,17 +899,12 @@ class PCA_GPEmulator(CobayaComponent):
             self.n_pca = None
         elif self.out_dim > 20:
             # some handwaving here. This is not really tested TODO: test this
-            print(self.N_pca_components)
-            print(self.N_pca_components.keys())
             if self._name in self.N_pca_components.keys():
                 self.n_pca = self.N_pca_components[self._name]
             else:
                 self.n_pca = self.N_pca_components_default
         else:
             self.n_pca = None#self.out_dim
-
-        print(self._name)
-        print(self.n_pca)
 
         return True
     
@@ -1585,12 +1593,12 @@ class PCA_GPEmulator(CobayaComponent):
                         ax[0].fill_between(E, E**power*10**(test_data[ind]-self._pca_residual_std), E**power*10**(test_data[ind]+self._pca_residual_std),color='orange', alpha=0.5, label='PCA uncertainty')
 
                         ax[1].plot(E,E**power*(10**original_data[ind]-10**test_data[ind]), label='residual')
-                        ax[1].fill_between(E, E**power*(10**(-test_data[ind]-test_unc[ind])+10**original_data[ind]), E**power*(10**(-test_data[ind]+test_unc[ind])+10**original_data[ind]), alpha=0.5, label='SAMPLING uncertainty')
-                        ax[1].fill_between(E, E**power*(10**(-test_data[ind]-self._pca_residual_std)+10**original_data[ind]), E**power*(10**(-test_data[ind]+self._pca_residual_std)+10**original_data[ind]),color='orange' ,alpha=0.5, label='PCA uncertainty')
+                        ax[1].fill_between(E, E**power*(-10**(test_data[ind]-test_unc[ind])+10**original_data[ind]), E**power*(-10**(test_data[ind]+test_unc[ind])+10**original_data[ind]), alpha=0.5, label='SAMPLING uncertainty')
+                        ax[1].fill_between(E, E**power*(-10**(test_data[ind]-self._pca_residual_std)+10**original_data[ind]), E**power*(-10**(test_data[ind]+self._pca_residual_std)+10**original_data[ind]),color='orange' ,alpha=0.5, label='PCA uncertainty')
                         
                         ax[2].plot(E,10**(original_data[ind]-test_data[ind])/10**original_data[ind], label='relative residual')
-                        ax[2].fill_between(E, (10**(-test_data[ind]-test_unc[ind])+10**original_data[ind])/10**original_data[ind], (10**(-test_data[ind]+test_unc[ind])+10**original_data[ind])/10**original_data[ind], alpha=0.5, label='SAMPLING uncertainty')
-                        ax[2].fill_between(E, (10**(-test_data[ind]-self._pca_residual_std)+10**original_data[ind])/10**original_data[ind], (10**(-test_data[ind]+self._pca_residual_std)+10**original_data[ind])/10**original_data[ind],color='orange' ,alpha=0.5, label='PCA uncertainty')
+                        ax[2].fill_between(E, (-10**(test_data[ind]-test_unc[ind])+10**original_data[ind])/10**original_data[ind], (-10**(test_data[ind]+test_unc[ind])+10**original_data[ind])/10**original_data[ind], alpha=0.5, label='SAMPLING uncertainty')
+                        ax[2].fill_between(E, (-10**(test_data[ind]-self._pca_residual_std)+10**original_data[ind])/10**original_data[ind], (-10**(test_data[ind]+self._pca_residual_std)+10**original_data[ind])/10**original_data[ind],color='orange' ,alpha=0.5, label='PCA uncertainty')
                         
                         ax[0].legend(loc = 'lower left')
                         ax[1].legend(loc = 'lower left')
