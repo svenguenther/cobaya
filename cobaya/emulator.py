@@ -73,6 +73,7 @@ class Emulator(CobayaComponent):
         self._emulator_trained = False
         self.theories = []
         self.must_provide = {}
+        self.current_params = []
 
         self.evalution_counter = 0
 
@@ -95,8 +96,8 @@ class Emulator(CobayaComponent):
         self.input_parameter = {} if 'input_parameter' not in args[1] else args[1]['input_parameter']
 
         self.N_validation_states = 5 if 'N_validation_states' not in args[1] else args[1]['N_validation_states']
+        self.validation_distance = 0.1 if 'validation_distance' not in args[1] else args[1]['validation_distance']
 
-        self.testset_fraction = 0.1 if 'testset_fraction' not in args[1] else args[1]['testset_fraction']
 
         self.N_pca_components = {} if 'N_pca_components' not in args[1] else args[1]['N_pca_components']
         self.N_pca_components_default = 15 if 'N_pca_default' not in args[1] else args[1]['N_pca_default']
@@ -114,6 +115,12 @@ class Emulator(CobayaComponent):
 
         self.in_validation = False
         self.debug = False if 'debug' not in args[1] else args[1]['debug']
+
+        self.testset_fraction = 0.1 if 'testset_fraction' not in args[1] else args[1]['testset_fraction']
+        # there is no point in having a testset if we are not in debug mode
+        if not self.debug:
+            self.testset_fraction = 0.0
+        
         self.counter_emulator_used = 0
         self.counter_emulator_not_used = 0
 
@@ -318,7 +325,7 @@ class Emulator(CobayaComponent):
         return True
 
     def _create_validation_states(self, theory, state):
-        #self.log.info("Creating validation states")
+        self.log.debug("Creating validation states")
 
         # No need for validation if not requested
         if self.N_validation_states == 0:
@@ -343,7 +350,6 @@ class Emulator(CobayaComponent):
                         for k,v in value.items():
                             if k == name:
                                 self.validation_states[i][theory][key][k] = test_pred[i]
-        
 
     def _create_PCA_validation_states(self, theory, state):
         #self.log.info("Creating PCA validation states")
@@ -372,7 +378,29 @@ class Emulator(CobayaComponent):
                             if k == name:
                                 self.PCA_validation_states[i][theory][key][k] = test_pred[i]
 
-        #self.log.info(self.validation_states)
+
+    def _require_validation(self, parameter_values, theory):
+
+        parameter_array = np.array([[value for key,value in parameter_values.items()]])
+
+        if len(self.validated_points) == 0:
+            self.log.debug("Validation required")
+            return True
+
+        normalization = self.predictors[theory][list(self.predictors[theory].keys())[0]]._in_stds
+
+        diff = (np.array(self.validated_points) - parameter_array)/normalization
+
+        distances = np.linalg.norm(diff,axis=1)
+
+        # here we take  
+        #self.log.info(distances.min())
+
+        if distances.min() < self.validation_distance:
+            # No validation required
+            self.log.debug("No validation required - due to close validated point")
+            return False
+        return True
 
 
     def evaluate(self,theory, state, want_derived, loglike, **params_values_dict):
@@ -447,8 +475,10 @@ class Emulator(CobayaComponent):
             self.write_log_step('not_used')
             return None, True
         
+
         # Check for validation_states
-        if self.N_validation_states>0:
+        if (self.N_validation_states>0) and self._require_validation(parameter_values=params_values_dict, theory=theory):
+            self.log.debug("Validation required")
             # in first iteration, create validation states
             if self.in_validation == False:
                 self.log.debug("Creating validation states")
@@ -512,6 +542,11 @@ class Emulator(CobayaComponent):
 
                 if count == 0:
                     self.log.debug("Validation loglikes are consistent!")
+
+                    # additionally we store all data points that are consistent
+                    data_in = np.array([value for key,value in state['params'].items()])
+                    self.validated_points.append(copy.deepcopy(data_in))
+
                 elif count == 1: # THis is only debug. Remove later
                     if self.debug:
                         self.log.debug("Validate with CLASS!")
@@ -534,8 +569,9 @@ class Emulator(CobayaComponent):
 
         # Now we can emulate the state and evaluate the accuracy
         data_in = np.array([[value for key,value in state['params'].items()]])
+        self.current_params = data_in
         for name, GP in self.predictors[theory].items():
-            pred, unc = GP._predict(data_in)
+            pred = GP._predict(data_in)
 
             # Add the prediction to the state
             for key, value in self.state[theory].items():
@@ -567,13 +603,7 @@ class Emulator(CobayaComponent):
 
         self.last_evaluated_state[theory] = copy.deepcopy(self.state[theory])
 
-        # additionally we store all data points 
-        data_in = np.array([[value for key,value in state['params'].items()]])
-        self.validated_points.append(copy.deepcopy(data_in))
 
-
-        #self.log.info('self.validated_points')
-        #self.log.info(self.validated_points)
 
         return self.state[theory], True
 
@@ -689,6 +719,10 @@ class Emulator(CobayaComponent):
         if loglike < -1.e+20:
             return False
 
+        # Check whether the state was evaluated by the emulator just before
+        if (not self._require_validation(parameter_values=state[self.theories[0]][1]['params'], theory=self.theories[0])) and (len(self.validated_points)>2):
+            self.log.debug("Point will not be added since it is close to a validated point")
+            return False
 
         theory_states = {}
         theory_name = []
@@ -729,8 +763,7 @@ class Emulator(CobayaComponent):
             added = self.data_cache.add_data(cs_theory,loglike)
 
         if added:
-            #self.log.info('ADDED STATE!!!')
-            #self.log.info(state)
+            self.log.debug('Added state')
             self.write_log_step('added', loglike)
         
         ## Initialize the PCA cache if not already done so
@@ -1347,8 +1380,8 @@ class PCA_GPEmulator(CobayaComponent):
             self.train_indices = np.arange(len(self.data_in_fit))
             self.test_indices = np.arange(len(self.data_in_fit))
 
-        print("Size train indices", len(self.train_indices))
-        print("Size test indices", len(self.test_indices))
+        self.log.debug("Size train indices: %d", len(self.train_indices))
+        self.log.debug("Size test indices: %d", len(self.test_indices))
 
         # Train the GP
         #self.log.info("Training GP")
@@ -1662,29 +1695,23 @@ class PCA_GPEmulator(CobayaComponent):
         # Predict the data
         if self.n_pca is not None:
             data_out = np.zeros(self.n_pca)
-            std_out_pca = np.zeros(self.n_pca)
-            std_out = np.zeros(self.out_dim)
             for i, GP in enumerate(self._gps):
-                data_out[i], std_out_pca[i] = GP.predict(data_in[:,self._in_mask[i]], return_std=True)
+                data_out[i] = GP.predict(data_in[:,self._in_mask[i]], return_std=False)
                 data_out[i] = data_out[i]*self._out_stds_pca[i] + self._out_means_pca[i]
-                std_out_pca[i] = std_out_pca[i]*self._out_stds_pca[i] + self._out_means_pca[i]
-                std_out += np.abs(np.outer(std_out_pca[i], self._pca.components_[i]))[0]
 
 
             data_out = self._pca.inverse_transform(data_out)
             #self.log.info(std_out.shape)
         else:
             data_out = np.zeros(self.out_dim)
-            std_out = np.zeros(self.out_dim)
             for i, GP in enumerate(self._gps):
-                data_out[i], std_out[i] = GP.predict(data_in[:,self._in_mask[i]], return_std=True)
+                data_out[i] = GP.predict(data_in[:,self._in_mask[i]], return_std=False)
                 #self.log.info(data_out)
                 #self.log.info(std_out)
 
         # Unnormalize the data
         data_out = data_out*self._out_stds + self._out_means
-        std_out = std_out*self._out_stds
-        return data_out, std_out
+        return data_out
 
     # This function is used to sample from the emulator. The difference to the _predict function is
     # that the _predict function returns the mean and the standard deviation of the emulator. The

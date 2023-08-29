@@ -215,6 +215,8 @@ class Theory(CobayaComponent):
         """
         Set how many states to cache
         """
+        # change that TODO
+        n = 10
         self._states = deque(maxlen=n)
 
     def check_cache_and_compute(self, params_values_dict,
@@ -235,6 +237,14 @@ class Theory(CobayaComponent):
         state = None
         if cached:
             # Only do, when we are curently not in the process of validating. Maybe change in future version
+            #if (self._name == 'classy') and (not validation_mode):
+            #    self.log.info("OLD: ")
+            #    para = [_["params"] for _ in self._states]
+            #    self.log.info(para)
+            #    self.log.info("NEW: ")
+            #    self.log.info(params_values_dict)
+            #    self.log.info(validation_mode)
+            #    self.log.info(emulator.in_validation)
             if not validation_mode:
                 if emulator is not None:
                     if not emulator.in_validation:
@@ -263,16 +273,23 @@ class Theory(CobayaComponent):
                             continue
 
         # HERE: Evaluate emulator here
-        if emulator is not None:
-            if self._name in emulator.theories:
-                if state is None:
-                    if not self.is_validated:
-                        self.log.debug("Try emulating new state")
-                        state = {"params": params_values_dict,
-                                "dependency_params": dependency_params,
-                                "derived": {} if want_derived else None}
-                        prev_loglike = sum(loglikes)
-                        state, self.is_validated = emulator.evaluate(self._name, state, want_derived, prev_loglike, **params_values_dict)
+        if not state:
+            if emulator is not None:
+                if self._name in emulator.theories:
+                    # self.log.info('state')
+                    # self.log.info(state)
+                    # self.log.info('params_values_dict')
+                    # self.log.info(params_values_dict)
+                    # para = [_["params"] for _ in self._states]
+                    # self.log.info(para)
+                    if state is None:
+                        if not self.is_validated:
+                            self.log.debug("Try emulating new state")
+                            state = {"params": params_values_dict,
+                                    "dependency_params": dependency_params,
+                                    "derived": {} if want_derived else None}
+                            prev_loglike = sum(loglikes)
+                            state, self.is_validated = emulator.evaluate(self._name, state, want_derived, prev_loglike, **params_values_dict)
 
         if not state:
             self.log.debug("Computing new state")
@@ -310,6 +327,7 @@ class Theory(CobayaComponent):
 
 
         # make this state the current one
+        #if not validation_mode:
         self._states.appendleft(state)
         self._current_state = copy.deepcopy(state)
         return True

@@ -123,6 +123,31 @@ def path_constructor(loader, node):
 DefaultsLoader.add_implicit_resolver('!path', path_matcher, None)
 DefaultsLoader.add_constructor('!path', path_constructor)
 
+def include(loader, node):
+    if loader.current_folder is None:
+        raise InputSyntaxError(
+            "'!include' directive can only be used when loading from a file.")
+    try:
+        include_files = [loader.construct_scalar(node)]
+    except ConstructorError:
+        include_files = loader.construct_sequence(node)
+    folder = loader.current_folder
+    loaded_includes: InfoDict = {}
+    for dfile in include_files:
+        dfilename = os.path.abspath(os.path.join(folder, dfile))
+        try:
+            dfilename += next(ext for ext in [""] + list(Extension.yamls)
+                              if (os.path.basename(dfilename) + ext
+                                  in os.listdir(os.path.dirname(dfilename))))
+        except StopIteration:
+            raise InputSyntaxError("Mentioned non-existent defaults file '%s', "
+                                   "searched for in folder '%s'." % (dfile, folder))
+        loaded_includes = yaml_load_file(dfilename)
+        # this_loaded_includes = yaml_load_file(dfilename)
+        # loaded_includes = recursive_update(loaded_includes, this_loaded_includes)
+    return loaded_includes
+
+DefaultsLoader.add_constructor('!include', include)
 
 def yaml_load(text_stream, file_name=None) -> InfoDict:
     errstr = "Error in your input file " + (

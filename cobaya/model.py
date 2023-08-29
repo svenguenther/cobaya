@@ -1452,7 +1452,6 @@ class Model(HasLogger):
             n = 1 if mpi.more_than_one_process() else 3
         n_done = 0
 
-        self.emulator
         if self.times is None:
             with timing_on(self):
                 while n_done < int(n) + int(discard):

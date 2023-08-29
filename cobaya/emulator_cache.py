@@ -83,12 +83,14 @@ class EmulatorCache(CobayaComponent):
             
         max_loglike = self.dataframes[self.theories[0]]['loglike'].max()
 
+
         # Remove datapoints with a loglikelihood lower than the minimum loglikelihood + delta_loglike_cache
         theory = list(self.dataframes.keys())[0]
         self.dataframes[theory] = self.dataframes[self.theories[0]][self.dataframes[self.theories[0]]['loglike'] > max_loglike-self.delta_loglike_cache]
 
-        #self.log.info("Cache size")
-        #self.log.info(self._size())
+        #self.log.info(max_loglike - self.delta_loglike_cache)
+        if loglike < max_loglike - self.delta_loglike_cache:
+            return False
 
         # First check whether the cache is full
         if self._size() >= self.N:
@@ -102,8 +104,8 @@ class EmulatorCache(CobayaComponent):
             min_loglike = self.dataframes[self.theories[0]]['loglike'].min()
             max_loglike = self.dataframes[self.theories[0]]['loglike'].max()
 
-            self.log.info("Min loglike in data cache: {}".format(min_loglike))
-            self.log.info("Max loglike in data cache: {}".format(max_loglike))
+            self.log.debug("Min loglike in data cache: {}".format(min_loglike))
+            self.log.debug("Max loglike in data cache: {}".format(max_loglike))
 
 
             #self.log.info("Min loglike in cache: {}".format(min_loglike))
