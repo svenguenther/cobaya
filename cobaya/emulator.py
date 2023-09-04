@@ -1671,9 +1671,9 @@ class PCA_GPEmulator(CobayaComponent):
         #self.log.info("Training GP on additional data")
 
         if self.n_pca is not None:
-            self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=0, alpha=1.e-10) for i in range(self.n_pca)]
+            self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=0, alpha=1.e-10, optimizer=None) for i in range(self.n_pca)]
         else:
-            self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=0, alpha=1.e-10) for i in range(self.out_dim)]
+            self._gps = [GaussianProcessRegressor(kernel=self._kernels[i], n_restarts_optimizer=0, alpha=1.e-10, optimizer=None) for i in range(self.out_dim)]
 
         for i,GP in enumerate(self._gps):
             # Train the GP on all data
