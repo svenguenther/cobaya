@@ -1,4 +1,4 @@
-*OLÉ emulator*, an native emulator for Cobaya
+*OLÉ emulator*, a native emulator for Cobaya
 ===================================================
 
 *Code under progress!*
